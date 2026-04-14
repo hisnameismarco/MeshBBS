@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MeshBBS Entry Point - MeshCore BBS only (no Telnet)"""
+"""MeshBBS Entry Point — MeshCore BBS via TCP Bridge"""
 import asyncio
 import os
 import sys

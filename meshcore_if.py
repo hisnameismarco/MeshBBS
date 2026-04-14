@@ -55,7 +55,7 @@ class MeshCoreBridge:
                 except Exception as e:
                     response = f"BBS Error: {e}"
             else:
-                response = "MeshBBS BBS | telnet YOUR-SERVER-IP 7800"
+                response = "MeshBBS BBS | TCP Bridge to MeshCore"
 
             # Queue response for sending via sender loop (thread-safe)
             if response:

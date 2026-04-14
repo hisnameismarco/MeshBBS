@@ -16,8 +16,7 @@ class MeshBBSConfig:
         "queue_interval": 30,
         "max_body_size": 4096,
         "default_user": "sysop",
-        "listen_host": "0.0.0.0",
-        "listen_port": 7800,
+
         "location": "angekommen in DEINE-REGION",
     }
 
@@ -34,7 +33,6 @@ class MeshBBSConfig:
         self.sync_interval = int(self.sync_interval)
         self.queue_interval = int(self.queue_interval)
         self.max_body_size = int(self.max_body_size)
-        self.listen_port = int(self.listen_port)
 
     def node_addr(self, user: str = "") -> str:
         if user:

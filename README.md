@@ -1,6 +1,6 @@
 # MeshBBS v0.3 — MeshCore BBS
 
-**Natives Mailbox-System für MeshCore BBS über LoRa/Telnet**
+**Natives Mailbox-System für MeshCore BBS über LoRa**
 
 ![MeshBBS Cover](meshmail_cover.png)
 
@@ -174,7 +174,7 @@ Siehe [ARCHITECTURE.md](ARCHITECTURE.md) für die vollständige Design-Dokumenta
 | `models.py` | Datenmodelle |
 | `sync.py` | Synchronisation zwischen Nodes |
 | `config.py` | Konfigurationsladung |
-| `cli.py` | Telnet-CLI für Debugging |
+
 | `meshmail.service` | systemd Service-Datei |
 
 ---
