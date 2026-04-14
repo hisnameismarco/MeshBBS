@@ -104,14 +104,27 @@ def _setup_bbs_commands():
 
     @bbs_command("MSG")
     def cmd_msg(bbs, from_pk, args):
-        parts = args.split(maxsplit=2)
-        if len(parts) < 2:
-            return "Usage: !MSG <to>@YOUR-NODE-ID <subject> [text]"
-        to_addr = parts[0]
-        subject = parts[1][:40]
-        body = parts[2] if len(parts) > 2 else ""
+        # Format: !MSG @username <subject> [text]
+        # Example: !MSG @sysop Hallo Dies ist eine Nachricht
+        parts = args.lstrip()
+        if not parts.startswith("@"):
+            return "Usage: !MSG @<username> <subject> [text]"
+        parts = parts[1:].lstrip()
+        space_idx = parts.find(" ")
+        if space_idx == -1:
+            return "Usage: !MSG @<username> <subject> [text]"
+        to_user = parts[:space_idx].lower()
+        rest = parts[space_idx+1:].lstrip()
+        space_idx2 = rest.find(" ")
+        if space_idx2 == -1:
+            subject = rest[:40]
+            body = ""
+        else:
+            subject = rest[:space_idx2][:40]
+            body = rest[space_idx2+1:]
         username = from_pk[:8].lower()
         from_addr = f"{username}@YOUR-NODE-ID"
+        to_addr = f"{to_user}@YOUR-NODE-ID"
         msg_id = str(uuid.uuid4())
         now = int(time.time())
         try:
@@ -124,14 +137,11 @@ def _setup_bbs_commands():
                 (msg_id, from_addr, to_addr, MessageType.PERSONAL.value, subject, body,
                  0, 0, Priority.NORMAL.value, 7, 0, now, 0, MessageStatus.LOCAL.value,
                  "[]", None, "", "", "[]"))
-            _, to_node = parse_address(to_addr)
-            if not to_node or to_node == "YOUR-NODE-ID":
-                local_user = to_addr.split("@")[0]
-                db.execute("""INSERT INTO inbox
-                    (msg_id, to_user, is_read, is_deleted, received_at, read_at)
-                    VALUES (?, ?, 0, 0, ?, 0)""", (msg_id, local_user, now))
+            db.execute("""INSERT INTO inbox
+                (msg_id, to_user, is_read, is_deleted, received_at, read_at)
+                VALUES (?, ?, 0, 0, ?, 0)""", (msg_id, to_user, now))
             db.close()
-            return f"Message sent to {to_addr}.\r\n"
+            return f"Message sent to @{to_user}.\r\n"
         except Exception as e:
             import sys as _sys
             print(f"MC MSG error: {e}", file=_sys.stderr)
