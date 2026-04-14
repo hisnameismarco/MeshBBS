@@ -4,8 +4,8 @@
 
 ## Funktionen
 
-- **PING-Befehl** auf jedem MeshCore-Kanal → PONG-Antwort mit Maidenhead-Grid (📍KJ2247), Hop-Count (⏱Nh) und Latenz (Ns)
-- **TEST-Befehl** → DM-Antwort "angekommen in Coswig-Anhalt"
+- **PING-Befehl** auf jedem MeshCore-Kanal → PONG-Antwort mit Maidenhead-Grid (📍XX0000), Hop-Count (⏱Nh) und Latenz (Ns)
+- **TEST-Befehl** → DM-Antwort "angekommen in DEINE-REGION"
 - **DM-Befehle**: `!HELP`, `!STAT`, `!INBOX`, `!MSG`, `!WHOAMI`, `!NODES`, `!PING`, `!ECHO`, `!SELFTEST` usw.
 - **DiagBot**: Systemdiagnose (PING, ECHO, SELFTEST, STATUS, QUEUES, PEERS, LASTSYNC)
 - **Rate-Limiting**: 10 Befehle/Min pro Absender
@@ -37,19 +37,19 @@ systemctl start meshmail
 ## Konfiguration
 
 Umgebungsvariablen in `config.env` setzen:
-- `MESHMAIL_NODE_ID` — Deine MeshCore-Node-ID (Standard: DE-ST-COSWIG-MARCO)
-- `MESHMAIL_TCP_HOST` — ESP32 MeshCore IP (Standard: 192.168.2.30)
+- `MESHMAIL_NODE_ID` — Deine MeshCore-Node-ID (Standard: YOUR-NODE-ID)
+- `MESHMAIL_TCP_HOST` — ESP32 MeshCore IP (Standard: YOUR-ESP32-IP)
 - `MESHMAIL_TCP_PORT` — ESP32 MeshCore TCP-Port (Standard: 5000)
 
 ## PONG-Antwortformat
 
 ```
-@DE-ST-COSWIG-MOBIL PONG 📍KJ2247 ⏱1hops 7s
+@YOUR-NODE-ID PONG 📍XX0000 ⏱1hops 7s
 ```
 
 - `@<sender>` — Erwähnung des Absenders
 - `PONG` — Antwort-Kennung
-- `📍KJ2247` — Maidenhead Grid Square dieses Nodes
+- `📍XX0000` — Maidenhead Grid Square dieses Nodes
 - `⏱1hops` — Hop-Anzahl vom Absender zu diesem Node
 - `7s` — Latenz in Sekunden
 

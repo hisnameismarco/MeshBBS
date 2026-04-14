@@ -16,7 +16,7 @@ log = logging.getLogger("meshmail.diag")
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
-NODE_ID = "DE-ST-COSWIG-MARCO"
+NODE_ID = "YOUR-NODE-ID"
 BOT_VERSION = "v0.3"
 RATE_LIMIT = 10          # max commands per minute
 RATE_WINDOW = 60         # seconds

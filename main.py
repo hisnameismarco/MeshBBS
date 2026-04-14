@@ -69,7 +69,7 @@ def _setup_bbs_commands():
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
         return (
-            f"MeshMail BBS: DE-ST-COSWIG-MARCO\r\n"
+            f"MeshMail BBS: YOUR-NODE-ID\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
             f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
             f"Queue: {stats.get('queue_size', 0)}\r\n"
@@ -100,18 +100,18 @@ def _setup_bbs_commands():
     @bbs_command("WHOAMI")
     def cmd_whoami(bbs, from_pk, args):
         username = from_pk[:8].lower()
-        return f"Your address: {username}@DE-ST-COSWIG-MARCO\r\n"
+        return f"Your address: {username}@YOUR-NODE-ID\r\n"
 
     @bbs_command("MSG")
     def cmd_msg(bbs, from_pk, args):
         parts = args.split(maxsplit=2)
         if len(parts) < 2:
-            return "Usage: !MSG <to>@DE-ST-COSWIG-MARCO <subject> [text]"
+            return "Usage: !MSG <to>@YOUR-NODE-ID <subject> [text]"
         to_addr = parts[0]
         subject = parts[1][:40]
         body = parts[2] if len(parts) > 2 else ""
         username = from_pk[:8].lower()
-        from_addr = f"{username}@DE-ST-COSWIG-MARCO"
+        from_addr = f"{username}@YOUR-NODE-ID"
         msg_id = str(uuid.uuid4())
         now = int(time.time())
         try:
@@ -125,7 +125,7 @@ def _setup_bbs_commands():
                  0, 0, Priority.NORMAL.value, 7, 0, now, 0, MessageStatus.LOCAL.value,
                  "[]", None, "", "", "[]"))
             _, to_node = parse_address(to_addr)
-            if not to_node or to_node == "DE-ST-COSWIG-MARCO":
+            if not to_node or to_node == "YOUR-NODE-ID":
                 local_user = to_addr.split("@")[0]
                 db.execute("""INSERT INTO inbox
                     (msg_id, to_user, is_read, is_deleted, received_at, read_at)
@@ -246,7 +246,7 @@ class MeshMailServer:
             if is_ping is True:
                 response = _cmd_ping_direct(from_name, grid, hops, resp_s)
             elif cmd.lower() == "test":
-                response = f"@{from_name} angekommen in Coswig-Anhalt" if from_name else "Angekommen in Coswig-Anhalt"
+                response = f"@{from_name} angekommen in DEINE-REGION" if from_name else "Angekommen in DEINE-REGION"
             else:
                 response = _cmd_bboard_direct(self.db)
 
@@ -279,7 +279,7 @@ class MeshMailServer:
         else:
             username = from_pubkey[:8].lower()
             return (
-                f"MeshMail BBS | Du: {username}@DE-ST-COSWIG-MARCO\r\n"
+                f"MeshMail BBS | Du: {username}@YOUR-NODE-ID\r\n"
                 f"Befehle: !HELP !STAT !INBOX !MSG !WHOAMI !NODES"
             )
 
@@ -317,7 +317,7 @@ class MeshMailServer:
         await self.sync.start()
         log.info("Sync engine started")
 
-        log.info("MeshCore DM BBS: message @DE-ST-COSWIG-MARCO")
+        log.info("MeshCore DM BBS: message @YOUR-NODE-ID")
         self._running = True
 
         for sig in (signal.SIGINT, signal.SIGTERM):

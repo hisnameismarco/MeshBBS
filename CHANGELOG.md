@@ -13,8 +13,8 @@ Alle Änderungen werden hier dokumentiert.
 ## [0.3.0] — 2026-04-13
 
 ### Feature
-- **PING/PONG**: Auf jedem Kanal (case-insensitive) → PONG mit Maidenhead-Grid (📍KJ2247), Hop-Count (⏱Nh), Latenz (Ns)
-- **TEST**: DM-Antwort "angekommen in Coswig-Anhalt"
+- **PING/PONG**: Auf jedem Kanal (case-insensitive) → PONG mit Maidenhead-Grid (📍XX0000), Hop-Count (⏱Nh), Latenz (Ns)
+- **TEST**: DM-Antwort "angekommen in DEINE-REGION"
 - **BBOARD**: Bulletin-Board auf jedem Kanal
 - **DM-Commands**: `!HELP`, `!STAT`, `!INBOX`, `!MSG`, `!WHOAMI`, `!NODES`, `!PING`, `!ECHO`, `!SELFTEST`, `!STATUS`, `!QUEUES`, `!PEERS`, `!LASTSYNC`, `!TEST`
 - **DiagBot**: Vollständige Systemdiagnose integriert
@@ -23,8 +23,8 @@ Alle Änderungen werden hier dokumentiert.
 
 ### Technisch
 - MeshCore TCP-Bridge mit `MeshCore.create_tcp()` (meshcore 2.3.6)
-- Node-ID: DE-ST-COSWIG-MARCO
-- Grid Square: KJ2247 (51.898°N, 12.464°E)
-- ESP32 PubKey: d81ae4dd93bf0226e03af1c72a8648c494683bfbca10ad80c2d2351fb370cc28
+- Node-ID: YOUR-NODE-ID
+- Grid Square: XX0000 (deine-lat, deine-lon)
+- ESP32 PubKey: your-pubkey-here
 - DM + Kanal-Broadcast für alle Command-Antworten
 - PID 22953+ | /var/lib/meshmail/meshmail.db

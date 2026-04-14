@@ -464,7 +464,7 @@ class MeshMailCLI:
 
 class MailboxConfig:
     """Configuration for MeshMail"""
-    def __init__(self, node_id: str, tcp_host: str = "192.168.2.30", tcp_port: int = 5000,
+    def __init__(self, node_id: str, tcp_host: str = "YOUR-ESP32-IP", tcp_port: int = 5000,
                  db_path: str = "/var/lib/meshmail/meshmail.db",
                  default_user: str = "sysop"):
         self.node_id = node_id

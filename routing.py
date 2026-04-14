@@ -20,7 +20,7 @@ from .store import Database
 class RoutingEngine:
     """Handles message routing, queueing, and peer sync"""
 
-    def __init__(self, db: Database, node_id: str, tcp_host: str = "192.168.2.30", tcp_port: int = 5000):
+    def __init__(self, db: Database, node_id: str, tcp_host: str = "YOUR-ESP32-IP", tcp_port: int = 5000):
         self.db = db
         self.node_id = node_id  # 8-char MeshCore node ID
         self.tcp_host = tcp_host

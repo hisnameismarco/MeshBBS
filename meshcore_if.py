@@ -19,7 +19,7 @@ log = logging.getLogger("meshmail.mc")
 class MeshCoreBridge:
     """Connect MeshMail to MeshCore via TCP using proper meshcore library."""
 
-    def __init__(self, host: str = "192.168.2.30", port: int = 5000,
+    def __init__(self, host: str = "YOUR-ESP32-IP", port: int = 5000,
                  node_id: str = "BBSCOSWIG",
                  on_dm_received: Optional[Callable] = None,
                  on_channel_message: Optional[Callable] = None):
@@ -55,7 +55,7 @@ class MeshCoreBridge:
                 except Exception as e:
                     response = f"BBS Error: {e}"
             else:
-                response = "MeshMail BBS | telnet 192.168.2.73 7800"
+                response = "MeshMail BBS | telnet YOUR-SERVER-IP 7800"
 
             # Queue response for sending via sender loop (thread-safe)
             if response:

@@ -8,7 +8,7 @@ class MeshMailConfig:
 
     DEFAULTS = {
         "node_id": "LOCALNODE",
-        "tcp_host": "192.168.2.30",
+        "tcp_host": "YOUR-ESP32-IP",
         "tcp_port": 5000,
         "db_path": "/var/lib/meshmail/meshmail.db",
         "log_path": "/var/log/meshmail/meshmail.log",
