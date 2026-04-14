@@ -127,6 +127,22 @@ class MeshCoreBridge:
             log.error("meshcore library not available!")
             return False
 
+        # Clean up any stale connection state
+        if self._mc:
+            try:
+                if self._auto_fetch_running:
+                    await self._mc.stop_auto_message_fetching()
+            except Exception:
+                pass
+            try:
+                await self._mc.disconnect()
+            except Exception:
+                pass
+            self._mc = None
+            self._auto_fetch_running = False
+            self._subscription = None
+            self._channel_subscription = None
+
         try:
             log.info(f"Connecting to MeshCore TCP {self.host}:{self.port}...")
             self._mc = await MeshCore.create_tcp(self.host, self.port)
@@ -157,11 +173,27 @@ class MeshCoreBridge:
             return False
 
     async def run(self):
-        """Run sender loop and keep connected."""
+        """Run sender loop + auto-reconnect watchdog."""
         sender = asyncio.create_task(self._sender_loop())
+        reconnect_delay = 10
+        max_reconnect_delay = 120
         try:
-            while self._running and self._mc:
-                await asyncio.sleep(5)
+            while self._running:
+                await asyncio.sleep(15)
+                if not self.is_connected() and self._running:
+                    log.warning(f"MeshCore connection lost, reconnecting in {reconnect_delay}s...")
+                    for attempt in range(5):
+                        if await self.connect():
+                            log.info(f"Reconnected after {attempt+1} attempt(s)")
+                            reconnect_delay = 10
+                            break
+                        log.error(f"Reconnect attempt {attempt+1}/5 failed, retry in {reconnect_delay}s")
+                        await asyncio.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+                    else:
+                        log.error("Max reconnect attempts reached, giving up")
+                        self._running = False
+                        break
         finally:
             sender.cancel()
             try:
