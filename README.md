@@ -2,76 +2,188 @@
 
 **Natives Mailbox-System für MeshCore BBS über LoRa/Telnet**
 
-## Funktionen
+![MeshMail Cover](meshmail_cover.png)
 
-- **PING-Befehl** auf jedem MeshCore-Kanal → PONG-Antwort mit Maidenhead-Grid (📍XX0000), Hop-Count (⏱Nh) und Latenz (Ns)
-- **TEST-Befehl** → DM-Antwort "angekommen in DEINE-REGION"
-- **DM-Befehle**: `!HELP`, `!STAT`, `!INBOX`, `!MSG`, `!WHOAMI`, `!NODES`, `!PING`, `!ECHO`, `!SELFTEST` usw.
-- **DiagBot**: Systemdiagnose (PING, ECHO, SELFTEST, STATUS, QUEUES, PEERS, LASTSYNC)
-- **Rate-Limiting**: 10 Befehle/Min pro Absender
-- **Kanal-Handling**: Groß-/Kleinschreibung ignorieren (ping/PING/Ping funktionieren alle)
+---
+
+## Was ist MeshMail?
+
+MeshMail ist ein **dezentrales Mailbox-System**, das auf einem ESP32-MeshCore-Knoten läuft. Es bringt klassisches Packet-Radio-Feeling zurück in die Moderne — mit DM-Nachrichten, Channel-Broadcasts und einem eingebauten Diagnose-Bot (DiagBot).
+
+Das System besteht aus zwei Teilen:
+- **ESP32 als MeshCore-Bridge** — stellt die LoRa-Funkverbindung per TCP her
+- **Python-BBS auf einem Server** — übernimmt Routing, Speicherung und Befehlsverarbeitung
+
+---
+
+## Was kann MeshMail?
+
+### PING — Reichweite testen
+Sende `ping` auf jedem MeshCore-Kanal (Groß-/Kleinschreibung egal). Du bekommst ein PONG zurück mit:
+- **Grid Square** — Maidenhead-Koordinaten (z.B. 📍XX0000)
+- **Hop-Count** — wie viele Repeater zwischen euch liegen (⏱5hops)
+- **Latenz** — Antwortzeit in Sekunden (7s)
+
+```
+@DEINE-NODE PONG 📍XX0000 ⏱3hops 5s
+```
+
+### TEST — Verbindung prüfen
+Sende `test` → DM-Antwort "angekommen in DEINE-REGION" (privat, nur für dich sichtbar).
+
+### BBOARD — Schwarzes Brett
+Sende `bboard` → zeigt aktuelle Nachrichten auf dem Kanal (öffentlich).
+
+### DM-Befehle (per Direktnachricht)
+| Befehl | Beschreibung |
+|--------|--------------|
+| `!HELP` | Hilfe anzeigen |
+| `!WHOAMI` | Deine Node-Info anzeigen |
+| `!INBOX` | Postein- und Ausgang anzeigen |
+| `!MSG <node>@<id> <text>` | Nachricht an andere Node senden |
+| `!NODES` | Liste aktiver Nodes im Netz |
+| `!STAT` | BBS-Statistiken |
+| `!PING` | Ping an diesen BBS |
+| `!ECHO <text>` | Text zurücksenden |
+| `!SELFTEST` | Interne Systemdiagnose |
+| `!STATUS` | Laufende Prozesse + Speicher |
+| `!QUEUES` | Nachrichten-Warteschlangen |
+| `!PEERS` | Verbundene Peers |
+| `!LASTSYNC` | Letzter Sync-Zeitpunkt |
+
+### DiagBot — Systemdiagnose
+Vollständige Diagnose-Tools für Sysops: CPU, Speicher, Nachrichten-Queues, Netzwerk-Peers, letzte Sync-Zeiten.
+
+### Auto-Reconnect
+Wenn die TCP-Verbindung zum ESP32 abreißt, versucht MeshMail automatisch die Verbindung wiederherzustellen (exponentieller Backoff: 10s → 120s, max 5 Versuche).
+
+---
 
 ## Installation
 
-```bash
-# Auf dem MeshCore-Node (ESP32):
-# Klone nach /opt/meshmail/
-git clone https://github.com/hisnameismarco/meshmail.git /opt/meshmail
+### Voraussetzungen
+- ESP32 mit MeshCore-Firmware (TCP-Server auf Port 5000)
+- Linux-Server (z.B. Raspberry Pi, VPS)
+- Python 3.10+
+- meshcore Python-Bibliothek
 
-# Venv mit meshcore-Bibliothek erstellen
+### Schritt für Schritt
+
+```bash
+# 1. Repo klonen
+git clone https://github.com/hisnameismarco/meshmail.git /opt/meshmail
+cd /opt/meshmail
+
+# 2. Virtuelle Umgebung erstellen
 python3 -m venv /opt/meshmail-venv
 source /opt/meshmail-venv/bin/activate
 pip install meshcore
 
-# Starten
+# 3. Konfiguration anpassen
+cp config.env.example config.env
+# Bearbeite config.env mit deinen Werten:
+#   MESHMAIL_NODE_ID = DEINE-NODE-ID
+#   MESHMAIL_TCP_HOST = IP-DES-ESP32
+#   MESHMAIL_TCP_PORT = 5000
+
+# 4. Datenverzeichnis erstellen
+mkdir -p /var/lib/meshmail
+chown meshmail:meshmail /var/lib/meshmail
+
+# 5. Als Service installieren (systemd)
+cp meshmail.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable meshmail
+systemctl start meshmail
+
+# 6. Status prüfen
+systemctl status meshmail
+ss -tnp state established | grep python3
+```
+
+### Oder manuell starten (ohne Service)
+```bash
+source /opt/meshmail-venv/bin/activate
 python3 /opt/meshmail/main.py
 ```
 
-Oder als systemd-Service:
-```bash
-cp meshmail/meshmail.service /etc/systemd/system/
-systemctl enable meshmail
-systemctl start meshmail
-```
+---
 
 ## Konfiguration
 
-Umgebungsvariablen in `config.env` setzen:
-- `MESHMAIL_NODE_ID` — Deine MeshCore-Node-ID (Standard: YOUR-NODE-ID)
-- `MESHMAIL_TCP_HOST` — ESP32 MeshCore IP (Standard: YOUR-ESP32-IP)
-- `MESHMAIL_TCP_PORT` — ESP32 MeshCore TCP-Port (Standard: 5000)
+Alle Einstellungen in `config.env`:
 
-## PONG-Antwortformat
+| Variable | Standard | Beschreibung |
+|----------|---------|--------------|
+| `MESHMAIL_NODE_ID` | YOUR-NODE-ID | Deine MeshCore-Node-ID |
+| `MESHMAIL_TCP_HOST` | YOUR-ESP32-IP | IP-Adresse des ESP32 mit MeshCore |
+| `MESHMAIL_TCP_PORT` | 5000 | TCP-Port des ESP32 |
+| `MESHMAIL_DB_PATH` | /var/lib/meshmail/meshmail.db | Pfad zur SQLite-Datenbank |
 
-```
-@YOUR-NODE-ID PONG 📍XX0000 ⏱1hops 7s
-```
-
-- `@<sender>` — Erwähnung des Absenders
-- `PONG` — Antwort-Kennung
-- `📍XX0000` — Maidenhead Grid Square dieses Nodes
-- `⏱1hops` — Hop-Anzahl vom Absender zu diesem Node
-- `7s` — Latenz in Sekunden
-
-## MeshCore-Verbindung
-
-MeshMail verbindet sich zum ESP32 MeshCore-Knoten via TCP (MeshCore Bridge). Die Bridge kümmert sich um:
-- DM-Routing (contact_msg)
-- Kanal-Nachrichten-Routing (channel_msg_recv)
-- Automatische Wieder Verbindung
-- Nachrichten-Warteschlange mit exponentieller Wartezeit
+---
 
 ## Architektur
 
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     MeshCore LoRa Netz                       │
+│  [Node A]  ────  [Repeater]  ────  [ESP32 Gateway]         │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ TCP (Port 5000)
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    MeshMail BBS Server                       │
+│                                                              │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
+│  │ meshcore_if  │──▶│  routing     │──▶│   store      │   │
+│  │ (TCP Bridge) │   │  (DM/Chan)   │   │  (SQLite)    │   │
+│  └──────────────┘   └──────────────┘   └──────────────┘   │
+│         │                  │                                │
+│         ▼                  ▼                                │
+│  ┌──────────────┐   ┌──────────────┐                       │
+│  │  diagbot     │   │   main       │                       │
+│  │  (Diagnose)  │   │   (BBS)      │                       │
+│  └──────────────┘   └──────────────┘                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
 Siehe [ARCHITECTURE.md](ARCHITECTURE.md) für die vollständige Design-Dokumentation.
+
+---
 
 ## Tech-Stack
 
-- Python 3.12
-- meshcore 2.3.6 (MeshCore LoRa-Bibliothek)
-- SQLite (für persistente Speicherung)
-- systemd (für Service-Management)
+- **Python 3.12** — Hauptprogramm
+- **meshcore 2.3.6** —offizielle MeshCore Python-Bibliothek
+- **SQLite** — Persistente Datenspeicherung
+- **systemd** — Service-Management und Auto-Start
+- **asyncio** — Asynchrone Kommunikation mit dem ESP32
+
+---
+
+## Dateien
+
+| Datei | Beschreibung |
+|-------|--------------|
+| `main.py` | Hauptprogramm — BBS-Loop, Befehlsverarbeitung |
+| `meshcore_if.py` | TCP-Bridge zu MeshCore, Auto-Reconnect |
+| `diagbot.py` | Diagnose-Bot — PING, ECHO, SELFTEST, STATUS |
+| `routing.py` | Routing-Engine für DM und Kanal-Nachrichten |
+| `store.py` | SQLite-Interface — Nachrichten, Nodes, Statistik |
+| `models.py` | Datenmodelle |
+| `sync.py` | Synchronisation zwischen Nodes |
+| `config.py` | Konfigurationsladung |
+| `cli.py` | Telnet-CLI für Debugging |
+| `meshmail.service` | systemd Service-Datei |
+
+---
 
 ## Lizenz
 
-MIT
+MIT — frei nutzbar, anpassbar, erweiterbar.
+
+---
+
+## Autor
+
+MeshMail ist ein Open-Source-Projekt für die MeshCore-Community.
