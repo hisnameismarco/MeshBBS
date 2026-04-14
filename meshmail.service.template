@@ -1,0 +1,24 @@
+[Unit]
+Description=MeshMail BBS for MeshCore
+After=network.target
+
+[Service]
+Type=simple
+User=meshmail
+Group=meshmail
+WorkingDirectory=/opt/meshmail
+EnvironmentFile=/var/lib/meshmail/config.env
+ExecStart=/usr/bin/python3 /opt/meshmail/main.py --db /var/lib/meshmail/meshmail.db --node-id %I --tcp-host 192.168.2.30 --tcp-port 5000 --listen-port 7800
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Harden
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/meshmail /var/log/meshmail
+
+[Install]
+WantedBy=multi-user.target

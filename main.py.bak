@@ -1,0 +1,337 @@
+# Channel handlers: channel_idx → {command_upper → handler}
+_CHANNEL_HANDLERS = {}
+
+
+def _setup_channel_handlers():
+    """Register public channel commands (no ! prefix needed)."""
+    # Kanal 10 = Ping
+    _CHANNEL_HANDLERS[10] = {
+        "PING": lambda bbs, from_pk, args: _cmd_ping_direct(),
+    }
+    # Kanal 11 = Test
+    _CHANNEL_HANDLERS[11] = {
+        "TEST": lambda bbs, from_pk, args: _cmd_bboard_direct(),
+        "BBOARD": lambda bbs, from_pk, args: _cmd_bboard_direct(),
+    }
+import asyncio
+import os
+import sys
+import signal
+import hashlib
+import logging
+import sqlite3
+import time
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from meshmail.config import MeshMailConfig
+from meshmail.store import Database
+from meshmail.routing import RoutingEngine
+from meshmail.sync import SyncEngine
+from meshmail.meshcore_if import MeshCoreBridge
+from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority
+from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+log = logging.getLogger("meshmail")
+
+
+# BBS command registry for MeshCore DM access
+BBS_COMMANDS = {}
+
+
+def bbs_command(name):
+    """Decorator to register a BBS command callable from MeshCore DMs."""
+    def decorator(func):
+        BBS_COMMANDS[name.upper()] = func
+        return func
+    return decorator
+
+
+def _setup_bbs_commands():
+    """Build the BBS command handlers usable via MeshCore DM."""
+
+    @bbs_command("HELP")
+    def cmd_help(bbs, from_pk, args):
+        return (
+            "MeshMail BBS | CMDS:\r\n"
+            "!HELP !STAT !INBOX\r\n"
+            "!MSG !WHOAMI !NODES\r\n"
+            "!PING !ECHO !SELFTEST\r\n"
+        )
+
+    @bbs_command("STAT")
+    def cmd_stat(bbs, from_pk, args):
+        stats = bbs.routing.get_stats() if bbs.routing else {}
+        return (
+            f"MeshMail BBS: DE-ST-COSWIG-MARCO\r\n"
+            f"Messages: {stats.get('total_messages', 0)}\r\n"
+            f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
+            f"Queue: {stats.get('queue_size', 0)}\r\n"
+        )
+
+    @bbs_command("NODES")
+    def cmd_nodes(bbs, from_pk, args):
+        nodes = bbs.db.get_all_nodes() if bbs.db else []
+        if not nodes:
+            return "No nodes known.\r\n"
+        lines = ["Known Nodes:"]
+        for n in nodes[:10]:
+            st = {1: 'ON', 2: 'OFF', 3: 'STALE'}.get(n.status.value, '?')
+            lines.append(f"  {n.node_id} | {st}")
+        return "\r\n".join(lines)
+
+    @bbs_command("INBOX")
+    def cmd_inbox(bbs, from_pk, args):
+        username = from_pk[:8].lower()
+        entries = bbs.db.get_inbox(username, include_read=True)[:5] if bbs.db else []
+        if not entries:
+            return "Inbox empty.\r\n"
+        lines = ["Your messages:"]
+        for i, e in enumerate(entries, 1):
+            lines.append(f"  {i}. {e['from_addr']} | {e['subject'][:30]}")
+        return "\r\n".join(lines)
+
+    @bbs_command("WHOAMI")
+    def cmd_whoami(bbs, from_pk, args):
+        username = from_pk[:8].lower()
+        return f"Your address: {username}@DE-ST-COSWIG-MARCO\r\n"
+
+    @bbs_command("MSG")
+    def cmd_msg(bbs, from_pk, args):
+        parts = args.split(maxsplit=2)
+        if len(parts) < 2:
+            return "Usage: !MSG <to>@DE-ST-COSWIG-MARCO <subject> [text]"
+        to_addr = parts[0]
+        subject = parts[1][:40]
+        body = parts[2] if len(parts) > 2 else ""
+        username = from_pk[:8].lower()
+        from_addr = f"{username}@DE-ST-COSWIG-MARCO"
+        msg_id = str(uuid.uuid4())
+        now = int(time.time())
+        try:
+            db = sqlite3.connect(bbs.config.db_path, isolation_level=None)
+            db.execute("""INSERT INTO messages
+                (msg_id, from_addr, to_addr, msg_type, subject, body, chunk,
+                 total_chunks, priority, ttl, hops, created_at, received_at,
+                 status, fwd_history, signature, thread_id, ref_msg_id, chunk_ids)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (msg_id, from_addr, to_addr, MessageType.PERSONAL.value, subject, body,
+                 0, 0, Priority.NORMAL.value, 7, 0, now, 0, MessageStatus.LOCAL.value,
+                 "[]", None, "", "", "[]"))
+            _, to_node = parse_address(to_addr)
+            if not to_node or to_node == "DE-ST-COSWIG-MARCO":
+                local_user = to_addr.split("@")[0]
+                db.execute("""INSERT INTO inbox
+                    (msg_id, to_user, is_read, is_deleted, received_at, read_at)
+                    VALUES (?, ?, 0, 0, ?, 0)""", (msg_id, local_user, now))
+            db.close()
+            return f"Message sent to {to_addr}.\r\n"
+        except Exception as e:
+            import sys as _sys
+            print(f"MC MSG error: {e}", file=_sys.stderr)
+            return f"Error: {e}"
+
+    # ── DiagBot commands (registered in BBS registry) ──────────────────────
+    @bbs_command("PING")
+    def cmd_ping(bbs, from_pk, args):
+        return _diag_ping(bbs, from_pk, args)
+
+    @bbs_command("ECHO")
+    def cmd_echo(bbs, from_pk, args):
+        return _diag_echo(bbs, from_pk, args)
+
+    @bbs_command("SELFTEST")
+    def cmd_selftest(bbs, from_pk, args):
+        return _diag_selftest(bbs, from_pk, args)
+
+    @bbs_command("STATUS")
+    def cmd_status(bbs, from_pk, args):
+        return _diag_status(bbs, from_pk, args)
+
+    @bbs_command("QUEUES")
+    def cmd_queues(bbs, from_pk, args):
+        return _diag_queues(bbs, from_pk, args)
+
+    @bbs_command("PEERS")
+    def cmd_peers(bbs, from_pk, args):
+        return _diag_peers(bbs, from_pk, args)
+
+    @bbs_command("LASTSYNC")
+    def cmd_lastsync(bbs, from_pk, args):
+        return _diag_lastsync(bbs, from_pk, args)
+
+    @bbs_command("BBOARD")
+    def cmd_bboard(bbs, from_pk, args):
+        return _diag_bboard(bbs, from_pk, args)
+
+    @bbs_command("TEST")
+    def cmd_test(bbs, from_pk, args):
+        return _diag_bboard(bbs, from_pk, args)
+
+    return BBS_COMMANDS
+
+
+# ─── DiagBot standalone command wrappers (for BBS registry) ─────────────────
+
+def _diag_ping(bbs, from_pk, args):
+    return _cmd_ping_direct()
+
+def _diag_echo(bbs, from_pk, args):
+    if not args:
+        return "ECHO: Usage: !ECHO <text>"
+    return args
+
+def _diag_selftest(bbs, from_pk, args):
+    return _cmd_selftest_direct(bbs.db, bbs.routing, bbs.mc_bridge)
+
+def _diag_status(bbs, from_pk, args):
+    return _cmd_status_direct(from_pk, bbs.db)
+
+def _diag_queues(bbs, from_pk, args):
+    return _cmd_queues_direct(from_pk, bbs.db)
+
+def _diag_peers(bbs, from_pk, args):
+    return _cmd_peers_direct(from_pk, bbs.db)
+
+def _diag_lastsync(bbs, from_pk, args):
+    return _cmd_lastsync_direct(from_pk, bbs.db)
+
+def _diag_bboard(bbs, from_pk, args):
+    return _cmd_bboard_direct(bbs.db)
+
+
+class MeshMailServer:
+    def __init__(self, config: MeshMailConfig):
+        self.config = config
+        self.db = None
+        self.routing = None
+        self.sync = None
+        self.mc_bridge = None
+        self.diagbot = None
+        self._running = False
+
+    def _handle_meshcore_channel(self, channel_idx: int, text: str, sender_ts: int, rssi: int, snr: int):
+        """Handle incoming channel message — route to channel handler, respond to channel."""
+        if not text:
+            return
+        cmd = text.strip().upper()
+        if cmd not in _CHANNEL_HANDLERS.get(channel_idx, {}):
+            return
+
+        handler = _CHANNEL_HANDLERS[channel_idx][cmd]
+        try:
+            response = handler(self, "", "")
+            if response and self.mc_bridge:
+                # Send response back to the same channel
+                self.mc_bridge.send_channel_message(channel_idx, response)
+                log.info(f"[CHAN#{channel_idx}] Responded to '{text[:20]}': {response[:40]}")
+        except Exception as e:
+            log.error(f"Channel handler error ch={channel_idx} cmd={cmd}: {e}")
+
+
+def _handle_meshcore_dm(self, from_pubkey: str, text: str) -> str:
+        """Handle incoming DM from MeshCore — route to BBS command."""
+        # DiagBot first — if it handles the command, return immediately
+        if self.diagbot:
+            resp = self.diagbot.handle_dm(from_pubkey, text)
+            if resp is not None:
+                return resp
+
+        if text.startswith("!"):
+            parts = text[1:].split(maxsplit=1)
+            cmd = parts[0].upper()
+            args = parts[1] if len(parts) > 1 else ""
+            if cmd in BBS_COMMANDS:
+                try:
+                    return BBS_COMMANDS[cmd](self, from_pubkey, args)
+                except Exception as e:
+                    return f"Error: {e}"
+            else:
+                return f"Unknown: {cmd}\r\nTry !HELP"
+        else:
+            username = from_pubkey[:8].lower()
+            return (
+                f"MeshMail BBS | Du: {username}@DE-ST-COSWIG-MARCO\r\n"
+                f"Befehle: !HELP !STAT !INBOX !MSG !WHOAMI !NODES"
+            )
+
+    async def start(self):
+        log.info(f"MeshMail v0.3 starting — MeshCore BBS only")
+        Path(self.config.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self.db = Database(self.config.db_path)
+        log.info(f"Database: {self.config.db_path}")
+
+        _setup_channel_handlers()
+        _setup_bbs_commands()
+
+        # MeshCore bridge
+        self.mc_bridge = MeshCoreBridge(
+            host=self.config.tcp_host,
+            port=self.config.tcp_port,
+            node_id=self.config.node_id,
+            on_dm_received=self._handle_meshcore_dm,
+            on_channel_message=self._handle_meshcore_channel
+        )
+        if await self.mc_bridge.connect():
+            log.info(f"MeshCore bridge connected ({self.config.tcp_host}:{self.config.tcp_port})")
+            asyncio.create_task(self.mc_bridge.run())
+        else:
+            log.warning("MeshCore bridge failed - running in degraded mode")
+
+        # DiagBot (needs db and mc_bridge references)
+        self.diagbot = DiagBot(db=self.db, routing=self.routing, mc_bridge=self.mc_bridge)
+        log.info("DiagBot initialized")
+
+        # Routing engine
+        self.routing = RoutingEngine(self.db, self.config.node_id, self.config.tcp_host, self.config.tcp_port)
+        self.routing.on_packet(self._send_to_meshcore)
+        await self.routing.start()
+        log.info("Routing engine started")
+
+        # Sync engine
+        self.sync = SyncEngine(self.db, self.routing, self.config.node_id, self.config.sync_interval)
+        await self.sync.start()
+        log.info("Sync engine started")
+
+        log.info(f"MeshCore DM BBS: message @DE-ST-COSWIG-MARCO")
+        self._running = True
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            asyncio.get_event_loop().add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+
+        while self._running:
+            await asyncio.sleep(30)
+
+    async def stop(self):
+        log.info("Shutting down MeshMail...")
+        self._running = False
+        if self.mc_bridge:
+            await self.mc_bridge.disconnect()
+        if self.sync:
+            await self.sync.stop()
+        if self.routing:
+            await self.routing.stop()
+        if self.db:
+            self.db.close()
+        log.info("MeshMail stopped.")
+
+    async def _send_to_meshcore(self, peer, packet: dict) -> bool:
+        if self.mc_bridge and self.mc_bridge.is_connected():
+            return True
+        return False
+
+
+def main():
+    config = MeshMailConfig()
+    server = MeshMailServer(config)
+    asyncio.run(server.start())
+
+
+if __name__ == "__main__":
+    main()
