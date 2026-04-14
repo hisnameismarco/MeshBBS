@@ -1,77 +1,77 @@
 # MeshMail v0.3 — MeshCore BBS
 
-**Native Mailbox System for MeshCore BBS over LoRa/Telnet**
+**Natives Mailbox-System für MeshCore BBS über LoRa/Telnet**
 
-## Features
+## Funktionen
 
-- **PING command** on any MeshCore channel → PONG response with Maidenhead grid (📍KJ2247), hop count (⏱Nh), and latency (Ns)
-- **TEST command** → DM reply "angekommen in Coswig-Anhalt"
-- **DM commands**: `!HELP`, `!STAT`, `!INBOX`, `!MSG`, `!WHOAMI`, `!NODES`, `!PING`, `!ECHO`, `!SELFTEST`, etc.
-- **DiagBot**: System diagnostics (PING, ECHO, SELFTEST, STATUS, QUEUES, PEERS, LASTSYNC)
-- **Rate limiting**: 10 commands/min per sender
-- **Channel handling**: Case-insensitive (ping/PING/Ping all work)
+- **PING-Befehl** auf jedem MeshCore-Kanal → PONG-Antwort mit Maidenhead-Grid (📍KJ2247), Hop-Count (⏱Nh) und Latenz (Ns)
+- **TEST-Befehl** → DM-Antwort "angekommen in Coswig-Anhalt"
+- **DM-Befehle**: `!HELP`, `!STAT`, `!INBOX`, `!MSG`, `!WHOAMI`, `!NODES`, `!PING`, `!ECHO`, `!SELFTEST` usw.
+- **DiagBot**: Systemdiagnose (PING, ECHO, SELFTEST, STATUS, QUEUES, PEERS, LASTSYNC)
+- **Rate-Limiting**: 10 Befehle/Min pro Absender
+- **Kanal-Handling**: Groß-/Kleinschreibung ignorieren (ping/PING/Ping funktionieren alle)
 
 ## Installation
 
 ```bash
-# On your MeshCore node (ESP32):
-# Clone to /opt/meshmail/
+# Auf dem MeshCore-Node (ESP32):
+# Klone nach /opt/meshmail/
 git clone https://github.com/hisnameismarco/meshmail.git /opt/meshmail
 
-# Create venv with meshcore library
+# Venv mit meshcore-Bibliothek erstellen
 python3 -m venv /opt/meshmail-venv
 source /opt/meshmail-venv/bin/activate
 pip install meshcore
 
-# Run
+# Starten
 python3 /opt/meshmail/main.py
 ```
 
-Or use the systemd service:
+Oder als systemd-Service:
 ```bash
 cp meshmail/meshmail.service /etc/systemd/system/
 systemctl enable meshmail
 systemctl start meshmail
 ```
 
-## Configuration
+## Konfiguration
 
-Set environment variables or edit `config.env`:
-- `MESHMAIL_NODE_ID` — Your MeshCore node ID (default: DE-ST-COSWIG-MARCO)
-- `MESHMAIL_TCP_HOST` — ESP32 MeshCore IP (default: 192.168.2.30)
-- `MESHMAIL_TCP_PORT` — ESP32 MeshCore TCP port (default: 5000)
+Umgebungsvariablen in `config.env` setzen:
+- `MESHMAIL_NODE_ID` — Deine MeshCore-Node-ID (Standard: DE-ST-COSWIG-MARCO)
+- `MESHMAIL_TCP_HOST` — ESP32 MeshCore IP (Standard: 192.168.2.30)
+- `MESHMAIL_TCP_PORT` — ESP32 MeshCore TCP-Port (Standard: 5000)
 
-## PONG Response Format
+## PONG-Antwortformat
 
 ```
 @DE-ST-COSWIG-MOBIL PONG 📍KJ2247 ⏱1hops 7s
 ```
 
-- `@<sender>` — Mention of who sent PING
-- `PONG` — Reply identifier
-- `📍KJ2247` — Maidenhead grid square of this node
-- `⏱1hops` — Hop count from sender to this node
-- `7s` — Latency in seconds
+- `@<sender>` — Erwähnung des Absenders
+- `PONG` — Antwort-Kennung
+- `📍KJ2247` — Maidenhead Grid Square dieses Nodes
+- `⏱1hops` — Hop-Anzahl vom Absender zu diesem Node
+- `7s` — Latenz in Sekunden
 
-## MeshCore Connection
+## MeshCore-Verbindung
 
-MeshMail connects to the ESP32 MeshCore node via TCP (MeshCore Bridge). The bridge handles:
-- DM routing (contact_msg)
-- Channel message routing (channel_msg_recv)
-- Automatic reconnection
-- Message queue with exponential backoff
+MeshMail verbindet sich zum ESP32 MeshCore-Knoten via TCP (MeshCore Bridge). Die Bridge kümmert sich um:
+- DM-Routing (contact_msg)
+- Kanal-Nachrichten-Routing (channel_msg_recv)
+- Automatische Wieder Verbindung
+- Nachrichten-Warteschlange mit exponentieller Wartezeit
 
-## Architecture
+## Architektur
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full design documentation.
+Siehe [ARCHITECTURE.md](ARCHITECTURE.md) für die vollständige Design-Dokumentation.
 
-## Tech Stack
+## Tech-Stack
 
 - Python 3.12
-- meshcore 2.3.6 (MeshCore LoRa library)
-- SQLite (for persistent storage)
-- systemd (for service management)
+- meshcore 2.3.6 (MeshCore LoRa-Bibliothek)
+- SQLite (für persistente Speicherung)
+- systemd (für Service-Management)
 
-## License
+## Lizenz
 
 MIT
