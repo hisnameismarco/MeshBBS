@@ -277,8 +277,13 @@ class Database:
             print(f"save_inbox_entry error: {e}")
             return False
 
-    def get_inbox(self, user: str, include_read: bool = False) -> List[tuple]:
-        """Get inbox entries for user with message details"""
+    def get_inbox(self, user: str, include_read: bool = False, node_id: str = "") -> List[tuple]:
+        """Get inbox entries for user with message details.
+        
+        If user is a pubkey prefix (8 hex chars), look up by to_addr matching user@node_id.
+        Falls node_id angegeben, suche nach to_addr LIKE '%@node_id' (alle lokalen User).
+        """
+        # Try direct match first
         sql = """
             SELECT i.*, m.subject, m.from_addr, m.created_at
             FROM inbox i
@@ -289,7 +294,23 @@ class Database:
             sql += " AND i.is_read = 0"
         sql += " ORDER BY i.received_at DESC"
         rows = self.conn.execute(sql, (user,)).fetchall()
-        return [(dict(r)) for r in rows]
+        result = [(dict(r)) for r in rows]
+        
+        # If no results and node_id given, try matching to_addr by node_id
+        if not result and node_id:
+            sql2 = """
+                SELECT i.*, m.subject, m.from_addr, m.created_at
+                FROM inbox i
+                JOIN messages m ON i.msg_id = m.msg_id
+                WHERE m.to_addr LIKE ? AND i.is_deleted = 0
+            """
+            if not include_read:
+                sql2 += " AND i.is_read = 0"
+            sql2 += " ORDER BY i.received_at DESC"
+            rows = self.conn.execute(sql2, (f'%@{node_id}',)).fetchall()
+            result = [(dict(r)) for r in rows]
+        
+        return result
 
     def mark_read(self, msg_id: str, user: str) -> bool:
         self.conn.execute(

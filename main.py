@@ -89,7 +89,8 @@ def _setup_bbs_commands():
     @bbs_command("INBOX")
     def cmd_inbox(bbs, from_pk, args):
         username = from_pk[:8].lower()
-        entries = bbs.db.get_inbox(username, include_read=True)[:5] if bbs.db else []
+        node_id = getattr(bbs.config, 'node_id', 'YOUR-NODE-ID')
+        entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id)[:5] if bbs.db else []
         if not entries:
             return "Inbox empty.\r\n"
         lines = ["Your messages:"]
