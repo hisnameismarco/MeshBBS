@@ -18,6 +18,7 @@ class MeshMailConfig:
         "default_user": "sysop",
         "listen_host": "0.0.0.0",
         "listen_port": 7800,
+        "location": "angekommen in DEINE-REGION",
     }
 
     def __init__(self, **overrides):
@@ -29,7 +30,6 @@ class MeshMailConfig:
             setattr(self, key, val)
 
         # Ensure types
-        self.tcp_port = int(self.tcp_port)
         self.tcp_port = int(self.tcp_port)
         self.sync_interval = int(self.sync_interval)
         self.queue_interval = int(self.queue_interval)

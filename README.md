@@ -116,6 +116,7 @@ Alle Einstellungen in `config.env`:
 | Variable | Standard | Beschreibung |
 |----------|---------|--------------|
 | `MESHMAIL_NODE_ID` | YOUR-NODE-ID | Deine MeshCore-Node-ID |
+| `MESHMAIL_LOCATION` | angekommen in DEINE-REGION | Text für TEST-Befehl |
 | `MESHMAIL_TCP_HOST` | YOUR-ESP32-IP | IP-Adresse des ESP32 mit MeshCore |
 | `MESHMAIL_TCP_PORT` | 5000 | TCP-Port des ESP32 |
 | `MESHMAIL_DB_PATH` | /var/lib/meshmail/meshmail.db | Pfad zur SQLite-Datenbank |

@@ -246,7 +246,7 @@ class MeshMailServer:
             if is_ping is True:
                 response = _cmd_ping_direct(from_name, grid, hops, resp_s)
             elif cmd.lower() == "test":
-                response = f"@{from_name} angekommen in DEINE-REGION" if from_name else "Angekommen in DEINE-REGION"
+                response = f"@{from_name} {self.cfg.location}" if from_name else self.cfg.location
             else:
                 response = _cmd_bboard_direct(self.db)
 
