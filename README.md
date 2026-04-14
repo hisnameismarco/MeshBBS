@@ -8,10 +8,10 @@
 
 ## Was ist MeshMail?
 
-MeshMail ist ein **dezentrales Mailbox-System**, das auf einem ESP32-MeshCore-Knoten läuft. Es bringt klassisches Packet-Radio-Feeling zurück in die Moderne — mit DM-Nachrichten, Channel-Broadcasts und einem eingebauten Diagnose-Bot (DiagBot).
+MeshMail ist ein **dezentrales Mailbox-System**, das auf einem beliebigen Server (z.B. Raspberry Pi, VPS) läuft und über einen **ESP32 mit MeshCore-Firmware** als Funk-Modem mit dem MeshCore-Netz verbunden ist. Der ESP32 dient sozusagen als **Modem** — er stellt die LoRa-Funkverbindung her, die eigentliche Mailbox-Logik läuft auf dem Server.
 
 Das System besteht aus zwei Teilen:
-- **ESP32 als MeshCore-Bridge** — stellt die LoRa-Funkverbindung per TCP her
+- **ESP32 mit MeshCore-Firmware** — Modem-Funktion, stellt die LoRa-Funkverbindung per TCP her (Standard: Port 5000)
 - **Python-BBS auf einem Server** — übernimmt Routing, Speicherung und Befehlsverarbeitung
 
 ---
@@ -132,7 +132,7 @@ Alle Einstellungen in `config.env`:
                          │ TCP (Port 5000)
                          ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                    MeshMail BBS Server                       │
+│               MeshMail BBS Server (dein Server)              │
 │                                                              │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
 │  │ meshcore_if  │──▶│  routing     │──▶│   store      │   │
