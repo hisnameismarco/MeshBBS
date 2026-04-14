@@ -1,14 +1,14 @@
 [Unit]
-Description=MeshMail BBS for MeshCore
+Description=MeshBBS BBS for MeshCore
 After=network.target
 
 [Service]
 Type=simple
-User=meshmail
-Group=meshmail
+User=MeshBBS
+Group=MeshBBS
 WorkingDirectory=/opt/meshmail
 EnvironmentFile=/var/lib/meshmail/config.env
-ExecStartPre=/bin/chown meshmail:meshmail /var/lib/meshmail/meshmail.db
+ExecStartPre=/bin/chown meshmail:meshmail /var/lib/meshmail/MeshBBS.db
 ExecStart=/opt/meshmail-venv/bin/python3 /opt/meshmail/main.py
 Restart=on-failure
 RestartSec=5

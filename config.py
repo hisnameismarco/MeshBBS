@@ -1,17 +1,17 @@
-"""MeshMail Konfiguration"""
+"""MeshBBS Konfiguration"""
 import os
 from pathlib import Path
 
 
-class MeshMailConfig:
-    """Zentrale Konfiguration für MeshMail"""
+class MeshBBSConfig:
+    """Zentrale Konfiguration für MeshBBS"""
 
     DEFAULTS = {
         "node_id": "LOCALNODE",
         "tcp_host": "YOUR-ESP32-IP",
         "tcp_port": 5000,
-        "db_path": "/var/lib/meshmail/meshmail.db",
-        "log_path": "/var/log/meshmail/meshmail.log",
+        "db_path": "/var/lib/meshmail/MeshBBS.db",
+        "log_path": "/var/log/MeshBBS/MeshBBS.log",
         "sync_interval": 300,
         "queue_interval": 30,
         "max_body_size": 4096,

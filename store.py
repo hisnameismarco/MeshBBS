@@ -16,7 +16,7 @@ from .models import (
 
 
 class Database:
-    """SQLite persistence layer for MeshMail"""
+    """SQLite persistence layer for MeshBBS"""
 
     def __init__(self, db_path: str):
         self.db_path = db_path

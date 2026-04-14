@@ -1,4 +1,4 @@
-"""MeshMail Sync - Epidemic Bulletin Distribution & Peer Synchronisation"""
+"""MeshBBS Sync - Epidemic Bulletin Distribution & Peer Synchronisation"""
 import asyncio
 import json
 import time

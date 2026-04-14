@@ -1,4 +1,4 @@
-"""Routing engine and peer synchronization for MeshMail"""
+"""Routing engine and peer synchronization for MeshBBS"""
 import asyncio
 import json
 import time
@@ -299,7 +299,7 @@ class RoutingEngine:
             tcp_port=port,
             last_seen=int(time.time()),
             status=NodeStatus.ONLINE,
-            capabilities=["meshmail-0.1"],
+            capabilities=["MeshBBS-0.1"],
         )
         self.db.save_node(node)
         return node

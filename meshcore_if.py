@@ -1,5 +1,5 @@
 """
-MeshCore Interface for MeshMail using the meshcore library.
+MeshCore Interface for MeshBBS using the meshcore library.
 Uses MeshCore.create_tcp() for proper TCP connection (same pattern as MeshBBS TCPMeshCoreConnection).
 """
 import asyncio
@@ -13,11 +13,11 @@ try:
 except ImportError:
     MESHcore_AVAILABLE = False
 
-log = logging.getLogger("meshmail.mc")
+log = logging.getLogger("MeshBBS.mc")
 
 
 class MeshCoreBridge:
-    """Connect MeshMail to MeshCore via TCP using proper meshcore library."""
+    """Connect MeshBBS to MeshCore via TCP using proper meshcore library."""
 
     def __init__(self, host: str = "YOUR-ESP32-IP", port: int = 5000,
                  node_id: str = "BBSCOSWIG",
@@ -55,7 +55,7 @@ class MeshCoreBridge:
                 except Exception as e:
                     response = f"BBS Error: {e}"
             else:
-                response = "MeshMail BBS | telnet YOUR-SERVER-IP 7800"
+                response = "MeshBBS BBS | telnet YOUR-SERVER-IP 7800"
 
             # Queue response for sending via sender loop (thread-safe)
             if response:

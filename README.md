@@ -1,14 +1,14 @@
-# MeshMail v0.3 — MeshCore BBS
+# MeshBBS v0.3 — MeshCore BBS
 
 **Natives Mailbox-System für MeshCore BBS über LoRa/Telnet**
 
-![MeshMail Cover](meshmail_cover.png)
+![MeshBBS Cover](meshmail_cover.png)
 
 ---
 
-## Was ist MeshMail?
+## Was ist MeshBBS?
 
-MeshMail ist ein **dezentrales Mailbox-System**, das auf einem beliebigen Server (z.B. Raspberry Pi, VPS) läuft und über einen **ESP32 mit MeshCore-Firmware** als Funk-Modem mit dem MeshCore-Netz verbunden ist. Der ESP32 dient sozusagen als **Modem** — er stellt die LoRa-Funkverbindung her, die eigentliche Mailbox-Logik läuft auf dem Server.
+MeshBBS ist ein **dezentrales Mailbox-System**, das auf einem beliebigen Server (z.B. Raspberry Pi, VPS) läuft und über einen **ESP32 mit MeshCore-Firmware** als Funk-Modem mit dem MeshCore-Netz verbunden ist. Der ESP32 dient sozusagen als **Modem** — er stellt die LoRa-Funkverbindung her, die eigentliche Mailbox-Logik läuft auf dem Server.
 
 Das System besteht aus zwei Teilen:
 - **ESP32 mit MeshCore-Firmware** — Modem-Funktion, stellt die LoRa-Funkverbindung per TCP her (Standard: Port 5000)
@@ -16,7 +16,7 @@ Das System besteht aus zwei Teilen:
 
 ---
 
-## Was kann MeshMail?
+## Was kann MeshBBS?
 
 ### PING — Reichweite testen
 Sende `ping` auf jedem MeshCore-Kanal (Groß-/Kleinschreibung egal). Du bekommst ein PONG zurück mit:
@@ -55,7 +55,7 @@ Sende `bboard` → zeigt aktuelle Nachrichten auf dem Kanal (öffentlich).
 Vollständige Diagnose-Tools für Sysops: CPU, Speicher, Nachrichten-Queues, Netzwerk-Peers, letzte Sync-Zeiten.
 
 ### Auto-Reconnect
-Wenn die TCP-Verbindung zum ESP32 abreißt, versucht MeshMail automatisch die Verbindung wiederherzustellen (exponentieller Backoff: 10s → 120s, max 5 Versuche).
+Wenn die TCP-Verbindung zum ESP32 abreißt, versucht MeshBBS automatisch die Verbindung wiederherzustellen (exponentieller Backoff: 10s → 120s, max 5 Versuche).
 
 ---
 
@@ -71,7 +71,7 @@ Wenn die TCP-Verbindung zum ESP32 abreißt, versucht MeshMail automatisch die Ve
 
 ```bash
 # 1. Repo klonen
-git clone https://github.com/hisnameismarco/meshmail.git /opt/meshmail
+git clone https://github.com/hisnameismarco/MeshBBS.git /opt/meshmail
 cd /opt/meshmail
 
 # 2. Virtuelle Umgebung erstellen
@@ -93,11 +93,11 @@ chown meshmail:meshmail /var/lib/meshmail
 # 5. Als Service installieren (systemd)
 cp meshmail.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable meshmail
-systemctl start meshmail
+systemctl enable MeshBBS
+systemctl start MeshBBS
 
 # 6. Status prüfen
-systemctl status meshmail
+systemctl status MeshBBS
 ss -tnp state established | grep python3
 ```
 
@@ -119,7 +119,7 @@ Alle Einstellungen in `config.env`:
 | `MESHMAIL_LOCATION` | angekommen in DEINE-REGION | Text für TEST-Befehl |
 | `MESHMAIL_TCP_HOST` | YOUR-ESP32-IP | IP-Adresse des ESP32 mit MeshCore |
 | `MESHMAIL_TCP_PORT` | 5000 | TCP-Port des ESP32 |
-| `MESHMAIL_DB_PATH` | /var/lib/meshmail/meshmail.db | Pfad zur SQLite-Datenbank |
+| `MESHMAIL_DB_PATH` | /var/lib/meshmail/MeshBBS.db | Pfad zur SQLite-Datenbank |
 
 ---
 
@@ -133,7 +133,7 @@ Alle Einstellungen in `config.env`:
                          │ TCP (Port 5000)
                          ▼
 ┌──────────────────────────────────────────────────────────────┐
-│               MeshMail BBS Server (dein Server)              │
+│               MeshBBS BBS Server (dein Server)              │
 │                                                              │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
 │  │ meshcore_if  │──▶│  routing     │──▶│   store      │   │
@@ -187,4 +187,4 @@ MIT — frei nutzbar, anpassbar, erweiterbar.
 
 ## Autor
 
-MeshMail ist ein Open-Source-Projekt für die MeshCore-Community.
+MeshBBS ist ein Open-Source-Projekt für die MeshCore-Community.

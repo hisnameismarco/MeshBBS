@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MeshMail Entry Point - MeshCore BBS only (no Telnet)"""
+"""MeshBBS Entry Point - MeshCore BBS only (no Telnet)"""
 import asyncio
 import os
 import sys
@@ -13,15 +13,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from meshmail.config import MeshMailConfig
-from meshmail.store import Database
-from meshmail.routing import RoutingEngine
-from meshmail.sync import SyncEngine
-from meshmail.meshcore_if import MeshCoreBridge
-from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority
-from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
+from MeshBBS.config import MeshBBSConfig
+from MeshBBS.store import Database
+from MeshBBS.routing import RoutingEngine
+from MeshBBS.sync import SyncEngine
+from MeshBBS.meshcore_if import MeshCoreBridge
+from MeshBBS.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority
+from MeshBBS.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
 
-log = logging.getLogger("meshmail")
+log = logging.getLogger("MeshBBS")
 
 
 # ─── BBS Command Registry ─────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ def _setup_bbs_commands():
     @bbs_command("HELP")
     def cmd_help(bbs, from_pk, args):
         return (
-            "MeshMail BBS | CMDS:\r\n"
+            "MeshBBS BBS | CMDS:\r\n"
             "!HELP !STAT !INBOX\r\n"
             "!MSG !WHOAMI !NODES\r\n"
             "!PING !ECHO !SELFTEST\r\n"
@@ -69,7 +69,7 @@ def _setup_bbs_commands():
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
         return (
-            f"MeshMail BBS: YOUR-NODE-ID\r\n"
+            f"MeshBBS BBS: YOUR-NODE-ID\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
             f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
             f"Queue: {stats.get('queue_size', 0)}\r\n"
@@ -203,8 +203,8 @@ def _diag_lastsync(bbs, from_pk, args):
 
 # ─── Server ───────────────────────────────────────────────────────────────────
 
-class MeshMailServer:
-    def __init__(self, config: MeshMailConfig):
+class MeshBBSServer:
+    def __init__(self, config: MeshBBSConfig):
         self.config = config
         self.db = None
         self.routing = None
@@ -279,12 +279,12 @@ class MeshMailServer:
         else:
             username = from_pubkey[:8].lower()
             return (
-                f"MeshMail BBS | Du: {username}@YOUR-NODE-ID\r\n"
+                f"MeshBBS BBS | Du: {username}@YOUR-NODE-ID\r\n"
                 f"Befehle: !HELP !STAT !INBOX !MSG !WHOAMI !NODES"
             )
 
     async def start(self):
-        log.info("MeshMail v0.3 starting — MeshCore BBS only")
+        log.info("MeshBBS v0.3 starting — MeshCore BBS only")
         Path(self.config.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.db = Database(self.config.db_path)
         log.info(f"Database: {self.config.db_path}")
@@ -327,7 +327,7 @@ class MeshMailServer:
             await asyncio.sleep(30)
 
     async def stop(self):
-        log.info("Shutting down MeshMail...")
+        log.info("Shutting down MeshBBS...")
         self._running = False
         if self.sync:
             await self.sync.stop()
@@ -335,7 +335,7 @@ class MeshMailServer:
             await self.routing.stop()
         if self.mc_bridge:
             await self.mc_bridge.disconnect()
-        log.info("MeshMail stopped.")
+        log.info("MeshBBS stopped.")
 
     async def _send_to_meshcore(self, peer, packet: dict) -> bool:
         if self.mc_bridge and self.mc_bridge.is_connected():
@@ -348,8 +348,8 @@ class MeshMailServer:
 
 
 def main():
-    config = MeshMailConfig()
-    server = MeshMailServer(config)
+    config = MeshBBSConfig()
+    server = MeshBBSServer(config)
     asyncio.run(server.start())
 
 

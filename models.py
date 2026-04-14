@@ -1,4 +1,4 @@
-"""Core data structures for MeshMail"""
+"""Core data structures for MeshBBS"""
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Optional, Set, List, Dict

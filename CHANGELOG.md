@@ -27,4 +27,4 @@ Alle Änderungen werden hier dokumentiert.
 - Grid Square: XX0000 (deine-lat, deine-lon)
 - ESP32 PubKey: your-pubkey-here
 - DM + Kanal-Broadcast für alle Command-Antworten
-- PID 22953+ | /var/lib/meshmail/meshmail.db
+- PID 22953+ | /var/lib/meshmail/MeshBBS.db

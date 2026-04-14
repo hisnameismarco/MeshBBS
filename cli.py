@@ -1,4 +1,4 @@
-"""MeshMail CLI - klassische BBS-artige Bedienung"""
+"""MeshBBS CLI - klassische BBS-artige Bedienung"""
 import sys
 import readline
 from typing import Optional, List
@@ -8,10 +8,10 @@ from .store import Database
 import time
 
 
-class MeshMailCLI:
-    """Interaktive CLI für MeshMail"""
+class MeshBBSCLI:
+    """Interaktive CLI für MeshBBS"""
 
-    PROMPT = "MeshMail> "
+    PROMPT = "MeshBBS> "
     COMMANDS = {
         'L': 'Liste ungelesene Nachrichten',
         'LA': 'Liste alle Nachrichten',
@@ -41,7 +41,7 @@ class MeshMailCLI:
         self._last_list: List[dict] = []
 
     def run(self):
-        print("=== MeshMail CLI ===")
+        print("=== MeshBBS CLI ===")
         print(f"Login: {self.current_user}")
         print("Befehle: H für Hilfe, EXIT zum Beenden\n")
 
@@ -426,7 +426,7 @@ class MeshMailCLI:
         stats = self.routing.get_stats()
         user = self.db.get_user(self.current_user)
 
-        print("\n=== MeshMail Statistik ===")
+        print("\n=== MeshBBS Statistik ===")
         print(f"  Node:       {stats['node_id']}")
         print(f"  Messages:   {stats['total_messages']}")
         print(f"  Nodes:      {stats['online_nodes']}/{stats['total_nodes']} online")
@@ -454,7 +454,7 @@ class MeshMailCLI:
 
     def _help(self):
         """Zeige Hilfe"""
-        print("\n=== MeshMail Hilfe ===")
+        print("\n=== MeshBBS Hilfe ===")
         for cmd, desc in self.COMMANDS.items():
             print(f"  {cmd:6s} - {desc}")
         print()
@@ -463,9 +463,9 @@ class MeshMailCLI:
 
 
 class MailboxConfig:
-    """Configuration for MeshMail"""
+    """Configuration for MeshBBS"""
     def __init__(self, node_id: str, tcp_host: str = "YOUR-ESP32-IP", tcp_port: int = 5000,
-                 db_path: str = "/var/lib/meshmail/meshmail.db",
+                 db_path: str = "/var/lib/meshmail/MeshBBS.db",
                  default_user: str = "sysop"):
         self.node_id = node_id
         self.tcp_host = tcp_host

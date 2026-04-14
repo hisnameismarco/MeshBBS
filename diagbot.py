@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """
-DiagBot - MeshMail diagnostic bot module.
+DiagBot - MeshBBS diagnostic bot module.
 Handles PING, ECHO, SELFTEST, LINKTEST, STATUS, QUEUES, PEERS, LASTSYNC commands.
 """
 import os
@@ -12,7 +12,7 @@ from typing import Optional, Dict, List
 
 from .models import MessageType, MessageStatus, Priority, QueueStatus, QueueEntry
 
-log = logging.getLogger("meshmail.diag")
+log = logging.getLogger("MeshBBS.diag")
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -284,7 +284,7 @@ def _cmd_selftest_direct(db, routing=None, mc_bridge=None) -> str:
 # ─── DiagBot class ────────────────────────────────────────────────────────────
 
 class DiagBot:
-    """Diagnostic bot for MeshMail. Mostly deprecated - BBS commands use direct wrappers."""
+    """Diagnostic bot for MeshBBS. Mostly deprecated - BBS commands use direct wrappers."""
 
     def __init__(self, db=None, routing=None, mc_bridge=None):
         self.db = db

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Apply fresh-connection fix to meshmail/main.py"""
+"""Apply fresh-connection fix to MeshBBS/main.py"""
 import re
 
-with open('/root/.openclaw/workspace/meshmail/main.py') as f:
+with open('/root/.openclaw/workspace/MeshBBS/main.py') as f:
     content = f.read()
 
 # Find and replace _send_msg
@@ -16,7 +16,7 @@ replacement = '''    def _send_msg(self, user_addr: str, args: str) -> str:
         body = parts[2] if len(parts) > 2 else ""
         # Use fresh connection to avoid DB lock with shared self.db
         import sqlite3, time, uuid
-        from meshmail.models import MessageStatus, parse_address
+        from MeshBBS.models import MessageStatus, parse_address
         try:
             db = sqlite3.connect(self.config.db_path, isolation_level=None)
             msg_id = str(uuid.uuid4())
@@ -46,6 +46,6 @@ replacement = '''    def _send_msg(self, user_addr: str, args: str) -> str:
 '''
 
 new_content = re.sub(pattern, replacement, content, count=1, flags=re.DOTALL)
-with open('/root/.openclaw/workspace/meshmail/main.py', 'w') as f:
+with open('/root/.openclaw/workspace/MeshBBS/main.py', 'w') as f:
     f.write(new_content)
 print('Fixed local main.py')

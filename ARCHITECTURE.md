@@ -1,10 +1,10 @@
-# MeshMail — Native Mailbox-System für MeshCore
+# MeshBBS — Native Mailbox-System für MeshCore
 
 ## 1. Systemübersicht
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    MeshMail Node                     │
+│                    MeshBBS Node                     │
 │  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌────────┐ │
 │  │  CLI /  │  │ Message  │  │ Routing │  │ Sync   │ │
 │  │   API   │──│  Store   │──│ Engine  │──│ Engine │ │
@@ -315,7 +315,7 @@ class QueueEntry:
 ## Dateistruktur
 
 ```
-meshmail/
+MeshBBS/
 ├── __init__.py
 ├── config.py          # Konfiguration
 ├── models.py          # Dataclasses
