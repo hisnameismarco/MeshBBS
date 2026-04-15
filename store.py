@@ -181,10 +181,14 @@ class Database:
         return [self._row_to_message(r) for r in rows]
 
     def delete_message(self, msg_id: str) -> bool:
-        """Mark message as expired"""
+        """Mark message as expired and deleted in both tables."""
         self.conn.execute(
             "UPDATE messages SET status = ? WHERE msg_id = ?",
             (MessageStatus.EXPIRED.value, msg_id)
+        )
+        self.conn.execute(
+            "UPDATE inbox SET is_deleted = 1 WHERE msg_id = ?",
+            (msg_id,)
         )
         self.conn.commit()
         return True

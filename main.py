@@ -98,6 +98,27 @@ def _setup_bbs_commands():
             lines.append(f"  {i}. {e['from_addr']} | {e['subject'][:30]}")
         return "\r\n".join(lines)
 
+    @bbs_command("DELETE")
+    def cmd_delete(bbs, from_pk, args):
+        """Delete a message by its number from inbox list."""
+        if not args.strip():
+            return "Usage: !DELETE <number>\r\n"
+        try:
+            num = int(args.strip())
+        except ValueError:
+            return "Invalid number. Usage: !DELETE <number>\r\n"
+        username = from_pk[:8].lower()
+        node_id = getattr(bbs.config, 'node_id', 'DE-ST-COSWIG-MARCO')
+        entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id)[:10]
+        if not entries:
+            return "Inbox empty. Nothing to delete.\r\n"
+        if num < 1 or num > len(entries):
+            return f"Number out of range (1-{len(entries)}).\r\n"
+        entry = entries[num - 1]
+        msg_id = entry['msg_id']
+        bbs.db.delete_message(msg_id)
+        return f"Deleted message #{num} ({entry['subject'][:30]}).\r\n"
+
     @bbs_command("WHOAMI")
     def cmd_whoami(bbs, from_pk, args):
         username = from_pk[:8].lower()
@@ -291,7 +312,7 @@ class MeshBBSServer:
             username = from_pubkey[:8].lower()
             return (
                 f"MeshBBS BBS | Du: {username}@YOUR-NODE-ID\r\n"
-                f"Befehle: !HELP !STAT !INBOX !MSG !WHOAMI !NODES"
+                f"Befehle: !HELP !STAT !INBOX !MSG !DELETE !WHOAMI !NODES"
             )
 
     async def start(self):
