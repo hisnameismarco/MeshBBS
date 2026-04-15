@@ -40,6 +40,19 @@ def bbs_command(name):
 _CHANNEL_HANDLERS = {}
 
 
+def _normalize_public_command(text: str) -> str:
+    """
+    Normalize public channel command text.
+    Supports variants like: ping, PING, #ping, #PING, test, #test, bboard, #bboard.
+    """
+    if not text:
+        return ""
+    cmd = text.strip().lower()
+    while cmd.startswith(("#", "!")):
+        cmd = cmd[1:].lstrip()
+    return cmd
+
+
 def _setup_channel_handlers():
     """Register public channel commands (no ! prefix needed)."""
     _CHANNEL_HANDLERS[1] = {
@@ -239,13 +252,15 @@ class MeshBBSServer:
             # Strip trailing SNR/RSSI info like " SNR=12.5 RSSI=None"
             import re
             after_colon = re.sub(r'\s+SNR=[\d.]+\s*RSSI=[\wNone]+$', '', after_colon)
-            cmd = after_colon.strip().upper()
+            raw_cmd = after_colon.strip()
         else:
-            cmd = text.strip().upper()
-        if cmd.lower() not in ("ping", "test", "bboard"):
+            raw_cmd = text.strip()
+
+        cmd = _normalize_public_command(raw_cmd)
+        if cmd not in ("ping", "test", "bboard"):
             return
 
-        is_ping = cmd.lower() == "ping"
+        is_ping = cmd == "ping"
 
         try:
             # Grid square für diesen Node
@@ -259,7 +274,7 @@ class MeshBBSServer:
 
             if is_ping is True:
                 response = _cmd_ping_direct(from_name, grid, hops, resp_s)
-            elif cmd.lower() == "test":
+            elif cmd == "test":
                 response = f"@{from_name} {self.config.location}" if from_name else self.config.location
             else:
                 response = _cmd_bboard_direct(self.db)
