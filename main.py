@@ -55,7 +55,7 @@ def _setup_bbs_commands():
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
         return (
-            f"MeshBBS BBS: {bbs.config.node_id}\r\n"
+            f"MeshBBS BBS: {self.config.node_id}\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
             f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
             f"Queue: {stats.get('queue_size', 0)}\r\n"
@@ -334,7 +334,7 @@ class MeshBBSServer:
         await self.sync.start()
         log.info("Sync engine started")
 
-        log.info(f"MeshCore DM BBS: message @{bbs.config.node_id}")
+        log.info(f"MeshCore DM BBS: message @{self.config.node_id}")
         self._running = True
 
         for sig in (signal.SIGINT, signal.SIGTERM):

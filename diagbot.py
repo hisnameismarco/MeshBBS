@@ -38,7 +38,7 @@ def _check_rate_limit(from_pubkey: str) -> bool:
         return False
     entries.append((now, ""))
     _rate_limit[from_pubkey] = entries
-    return False
+    return True
 
 
 def _is_sysop(from_pubkey: str) -> bool:
