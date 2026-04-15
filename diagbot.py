@@ -38,12 +38,13 @@ def _check_rate_limit(from_pubkey: str) -> bool:
         return False
     entries.append((now, ""))
     _rate_limit[from_pubkey] = entries
-    return True
+    return False
 
 
 def _is_sysop(from_pubkey: str) -> bool:
+    """Check if caller is sysop. Deny by default if no SYSOP_KEY configured."""
     if not SYSOP_KEY:
-        return True
+        return False
     return from_pubkey == SYSOP_KEY
 
 
@@ -151,10 +152,6 @@ def _cmd_ping_direct(from_name: str = None, grid: str = "", hops: int = 0, resp_
     if resp_s > 0:
         parts.append(f"{resp_s}s")
     return " ".join(p for p in parts if p)
-
-
-def _cmd_echo_direct(text: str) -> str:
-    return text
 
 
 def _cmd_echo_direct(text: str) -> str:

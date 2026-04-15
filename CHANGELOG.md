@@ -2,6 +2,19 @@
 
 Alle Änderungen werden hier dokumentiert.
 
+## [0.3.3] — 2026-04-15
+
+### Security Fix
+- **_is_sysop() fail-safe**: Gibt jetzt `False` zurück wenn kein `SYSMAIL_SYSOP_KEY` konfiguriert ist (vorher: `True` = alle hatten Sysop-Zugriff)
+
+### Fix
+- **_cmd_echo_direct doppelt**: Eine der zwei identischen Definitionen entfernt
+- **!MSG SQLite-Verbindung**: Nutzt jetzt `bbs.db.conn` statt eigener `sqlite3.connect()`
+- **Channel-Handler-Registry**: Ungenutztes `_CHANNEL_HANDLERS` Dead-Code entfernt
+
+### Changed
+- **YOUR-NODE-ID Platzhalter** in BBS-Antworten (STAT, WHOAMI, MSG) jetzt dynamisch via `node_id` aus Config
+
 ## [0.3.2] — 2026-04-15
 
 ### Feature

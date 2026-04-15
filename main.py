@@ -13,13 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from MeshBBS.config import MeshBBSConfig
-from MeshBBS.store import Database
-from MeshBBS.routing import RoutingEngine
-from MeshBBS.sync import SyncEngine
-from MeshBBS.meshcore_if import MeshCoreBridge
-from MeshBBS.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority
-from MeshBBS.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
+from meshmail.config import MeshMailConfig
+from meshmail.store import Database
+from meshmail.routing import RoutingEngine
+from meshmail.sync import SyncEngine
+from meshmail.meshcore_if import MeshCoreBridge
+from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority
+from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
 
 log = logging.getLogger("MeshBBS")
 
@@ -37,20 +37,6 @@ def bbs_command(name):
 
 # ─── Channel Handlers (public commands, no ! prefix) ─────────────────────────
 # channel_idx → {command_upper → handler}
-_CHANNEL_HANDLERS = {}
-
-
-def _setup_channel_handlers():
-    """Register public channel commands (no ! prefix needed)."""
-    _CHANNEL_HANDLERS[1] = {
-        "PING": lambda bbs, from_pk, args: _cmd_ping_direct(),
-    }
-    _CHANNEL_HANDLERS[2] = {
-        "TEST": lambda bbs, from_pk, args: _cmd_bboard_direct(bbs.db),
-        "BBOARD": lambda bbs, from_pk, args: _cmd_bboard_direct(bbs.db),
-    }
-
-
 # ─── BBS Command Definitions ──────────────────────────────────────────────────
 
 def _setup_bbs_commands():
@@ -69,7 +55,7 @@ def _setup_bbs_commands():
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
         return (
-            f"MeshBBS BBS: YOUR-NODE-ID\r\n"
+            f"MeshBBS BBS: {bbs.config.node_id}\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
             f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
             f"Queue: {stats.get('queue_size', 0)}\r\n"
@@ -89,7 +75,7 @@ def _setup_bbs_commands():
     @bbs_command("INBOX")
     def cmd_inbox(bbs, from_pk, args):
         username = from_pk[:8].lower()
-        node_id = getattr(bbs.config, 'node_id', 'YOUR-NODE-ID')
+        node_id = getattr(bbs.config, 'node_id', 'DE-ST-COSWIG-MARCO')
         entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id)[:5] if bbs.db else []
         if not entries:
             return "Inbox empty.\r\n"
@@ -122,7 +108,7 @@ def _setup_bbs_commands():
     @bbs_command("WHOAMI")
     def cmd_whoami(bbs, from_pk, args):
         username = from_pk[:8].lower()
-        return f"Your address: {username}@YOUR-NODE-ID\r\n"
+        return f"Your address: {username}@{node_id}\r\n"
 
     @bbs_command("MSG")
     def cmd_msg(bbs, from_pk, args):
@@ -145,8 +131,8 @@ def _setup_bbs_commands():
             subject = rest[:space_idx2][:40]
             body = rest[space_idx2+1:]
         username = from_pk[:8].lower()
-        from_addr = f"{username}@YOUR-NODE-ID"
-        to_addr = f"{to_user}@YOUR-NODE-ID"
+        from_addr = f"{username}@{node_id}"
+        to_addr = f"{to_user}@{node_id}"
         msg_id = str(uuid.uuid4())
         now = int(time.time())
         try:
@@ -236,7 +222,7 @@ def _diag_lastsync(bbs, from_pk, args):
 # ─── Server ───────────────────────────────────────────────────────────────────
 
 class MeshBBSServer:
-    def __init__(self, config: MeshBBSConfig):
+    def __init__(self, config: MeshMailConfig):
         self.config = config
         self.db = None
         self.routing = None
@@ -311,7 +297,7 @@ class MeshBBSServer:
         else:
             username = from_pubkey[:8].lower()
             return (
-                f"MeshBBS BBS | Du: {username}@YOUR-NODE-ID\r\n"
+                f"MeshBBS BBS | Du: {username}@{node_id}\r\n"
                 f"Befehle: !HELP !STAT !INBOX !MSG !DELETE !WHOAMI !NODES"
             )
 
@@ -321,7 +307,6 @@ class MeshBBSServer:
         self.db = Database(self.config.db_path)
         log.info(f"Database: {self.config.db_path}")
 
-        _setup_channel_handlers()
         _setup_bbs_commands()
 
         self.mc_bridge = MeshCoreBridge(
@@ -349,7 +334,7 @@ class MeshBBSServer:
         await self.sync.start()
         log.info("Sync engine started")
 
-        log.info("MeshCore DM BBS: message @YOUR-NODE-ID")
+        log.info(f"MeshCore DM BBS: message @{bbs.config.node_id}")
         self._running = True
 
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -380,7 +365,7 @@ class MeshBBSServer:
 
 
 def main():
-    config = MeshBBSConfig()
+    config = MeshMailConfig()
     server = MeshBBSServer(config)
     asyncio.run(server.start())
 

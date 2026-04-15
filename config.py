@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-class MeshBBSConfig:
+class MeshMailConfig:
     """Zentrale Konfiguration für MeshBBS"""
 
     DEFAULTS = {
