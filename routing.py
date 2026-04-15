@@ -125,7 +125,7 @@ class RoutingEngine:
 
     def _deliver_local(self, msg: MeshMessage):
         """Deliver message to local inbox"""
-        _, local_user = parse_address(msg.to_addr)
+        local_user, _ = parse_address(msg.to_addr)
 
         if is_sysop_addr(msg.to_addr):
             # Sysop message
