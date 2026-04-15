@@ -2,6 +2,18 @@
 
 Alle Änderungen werden hier dokumentiert.
 
+## [0.3.2] — 2026-04-15
+
+### Feature
+- **!DELETE**: Nachrichten aus der Inbox löschen mit `!DELETE <nummer>`
+  - Listet Nummern 1-10 aus !INBOX
+  - Setzt is_deleted=1 in inbox-Tabelle (vorher nur status=EXPIRED)
+
+### Fix
+- **Inbox Delete Bug**: delete_message() setzte nur status=EXPIRED, lies aber is_deleted=0 — Nachrichten blieben sichtbar
+- **DiagBot/RoutingEngine Reihenfolge**: RoutingEngine wird jetzt VOR DiagBot initialisiert (DiagBot braucht routing reference)
+- **self.cfg → self.config**: Korrekter Attributname in Channel-Handler
+
 ## [0.3.1] — 2026-04-14
 
 ### Fix
