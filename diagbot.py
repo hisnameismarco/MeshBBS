@@ -157,10 +157,6 @@ def _cmd_echo_direct(text: str) -> str:
     return text
 
 
-def _cmd_echo_direct(text: str) -> str:
-    return text
-
-
 def _cmd_status_direct(from_pubkey: str, db) -> str:
     if not _is_sysop(from_pubkey):
         return "STATUS: SYSOP ONLY"

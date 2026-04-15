@@ -68,8 +68,9 @@ def _setup_bbs_commands():
     @bbs_command("STAT")
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
+        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
         return (
-            f"MeshBBS BBS: YOUR-NODE-ID\r\n"
+            f"MeshBBS BBS: {node_id}\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
             f"Nodes: {stats.get('online_nodes', 0)}/{stats.get('total_nodes', 0)}\r\n"
             f"Queue: {stats.get('queue_size', 0)}\r\n"
@@ -101,7 +102,8 @@ def _setup_bbs_commands():
     @bbs_command("WHOAMI")
     def cmd_whoami(bbs, from_pk, args):
         username = from_pk[:8].lower()
-        return f"Your address: {username}@YOUR-NODE-ID\r\n"
+        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+        return f"Your address: {username}@{node_id}\r\n"
 
     @bbs_command("MSG")
     def cmd_msg(bbs, from_pk, args):
@@ -124,8 +126,9 @@ def _setup_bbs_commands():
             subject = rest[:space_idx2][:40]
             body = rest[space_idx2+1:]
         username = from_pk[:8].lower()
-        from_addr = f"{username}@YOUR-NODE-ID"
-        to_addr = f"{to_user}@YOUR-NODE-ID"
+        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+        from_addr = f"{username}@{node_id}"
+        to_addr = f"{to_user}@{node_id}"
         msg_id = str(uuid.uuid4())
         now = int(time.time())
         try:
@@ -257,7 +260,7 @@ class MeshBBSServer:
             if is_ping is True:
                 response = _cmd_ping_direct(from_name, grid, hops, resp_s)
             elif cmd.lower() == "test":
-                response = f"@{from_name} {self.cfg.location}" if from_name else self.cfg.location
+                response = f"@{from_name} {self.config.location}" if from_name else self.config.location
             else:
                 response = _cmd_bboard_direct(self.db)
 
@@ -289,8 +292,9 @@ class MeshBBSServer:
                 return f"Unknown: {cmd}\r\nTry !HELP"
         else:
             username = from_pubkey[:8].lower()
+            node_id = getattr(self.config, "node_id", "YOUR-NODE-ID")
             return (
-                f"MeshBBS BBS | Du: {username}@YOUR-NODE-ID\r\n"
+                f"MeshBBS BBS | Du: {username}@{node_id}\r\n"
                 f"Befehle: !HELP !STAT !INBOX !MSG !WHOAMI !NODES"
             )
 
