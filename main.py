@@ -275,7 +275,8 @@ class MeshBBSServer:
             if is_ping is True:
                 response = _cmd_ping_direct(from_name, grid, hops, resp_s)
             elif cmd == "test":
-                response = f"@{from_name} {self.config.location}" if from_name else self.config.location
+                test_msg = f"Test erfolgreich aus {self.config.location}"
+                response = f"@{from_name} {test_msg}" if from_name else test_msg
             else:
                 response = _cmd_bboard_direct(self.db)
 
