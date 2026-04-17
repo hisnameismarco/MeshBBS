@@ -17,7 +17,17 @@ from meshmail.store import Database
 from meshmail.routing import RoutingEngine
 from meshmail.sync import SyncEngine
 from meshmail.meshcore_if import MeshCoreBridge
-from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority, MeshMessage, InboxEntry
+from meshmail.models import (
+    MessageType,
+    MessageStatus,
+    MailboxUser,
+    parse_address,
+    Priority,
+    MeshMessage,
+    InboxEntry,
+    NodeStatus,
+    PeerNode,
+)
 from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_echo_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct, _grid_from_config
 
 log = logging.getLogger("MeshBBS")
@@ -35,6 +45,9 @@ _MAX_CHANNEL_CMD_LEN = 128
 _INBOX_PAGE_SIZE = 10
 _VALID_DISPLAY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 _REF_PREFIX_RE = re.compile(r"^(?:ref:|>>)\s*([A-Za-z0-9-]{8,64})\s*(?:\r?\n|$)", re.IGNORECASE)
+_DISCOVERY_RE = re.compile(r"^DISCOVER\s+([A-Za-z0-9._-]{1,64})(?:\s+(\d+))?$", re.IGNORECASE)
+_PRESENCE_RE = re.compile(r"^PRESENCE\s+([A-Za-z0-9._-]{1,64})(?:\s+(\d+))?$", re.IGNORECASE)
+_FINGER_RE = re.compile(r"^FINGER\s+([A-Za-z0-9._-]{1,64})\b", re.IGNORECASE)
 _ERR = {
     "usage_msg_simple": "ERROR usage: !MSG @<username>[@<node>] <subject> [text]",
     "usage_msg_extended": "ERROR usage: !MSG @<username>[@<node>] | <subject> | [text]",
@@ -162,6 +175,25 @@ def _ping_grid(config: MeshBBSConfig) -> str:
     return _grid_from_config(config)
 
 
+def _presence_counts(db: Database, timeout_s: int):
+    timeout_s = max(1, int(timeout_s))
+    now = int(time.time())
+    total = 0
+    online = 0
+    changed = 0
+    for node in db.get_all_nodes():
+        total += 1
+        age = now - int(node.last_seen or 0)
+        target = NodeStatus.ONLINE if node.last_seen and age <= timeout_s else NodeStatus.OFFLINE
+        if target == NodeStatus.ONLINE:
+            online += 1
+        if node.status != target:
+            node.status = target
+            db.save_node(node)
+            changed += 1
+    return online, total, changed
+
+
 def _parse_inbox_args(args: str):
     page = 1
     include_read = True
@@ -216,9 +248,10 @@ def _build_info_response(bbs) -> str:
     grid = _ping_grid(bbs.config) or "-"
     location = str(getattr(bbs.config, "location", "") or "-")
     uptime_s = max(0, int(time.time()) - int(getattr(bbs, "_started_at", int(time.time()))))
-    nodes = bbs.db.get_all_nodes() if bbs.db else []
-    online = sum(1 for n in nodes if n.status.value == 1)
-    total = len(nodes)
+    online, total, _ = _presence_counts(
+        bbs.db,
+        int(getattr(bbs.config, "presence_timeout", 600) or 600),
+    ) if bbs.db else (0, 0, 0)
     queue_depth = bbs.db.queue_depth() if bbs.db else 0
     return (
         f"Node: {node_id}\r\n"
@@ -376,6 +409,15 @@ def _setup_bbs_commands():
         if not username:
             return _err("sender_invalid")
         node_id = _config_node_id(bbs.config)
+        if bbs.db:
+            online, total, _ = _presence_counts(
+                bbs.db,
+                int(getattr(bbs.config, "presence_timeout", 600) or 600),
+            )
+            return (
+                f"Your address: {username}@{node_id}\r\n"
+                f"Presence: online ({online}/{total} peers)\r\n"
+            )
         return f"Your address: {username}@{node_id}\r\n"
 
     @bbs_command("MSG")
@@ -546,6 +588,9 @@ class MeshBBSServer:
         self.diagbot = None
         self._running = False
         self._auto_finger_task: Optional[asyncio.Task] = None
+        self._discovery_task: Optional[asyncio.Task] = None
+        self._presence_task: Optional[asyncio.Task] = None
+        self._retention_task: Optional[asyncio.Task] = None
         self._started_at = int(time.time())
 
     def _build_auto_finger_payload(self) -> str:
@@ -575,6 +620,97 @@ class MeshBBSServer:
                 log.exception("Auto-finger loop failed")
                 await asyncio.sleep(min(60, interval))
 
+    def _upsert_presence(self, node_id: str, announced_ts: Optional[int] = None):
+        if not self.db:
+            return
+        local = _config_node_id(self.config).lower()
+        target = (node_id or "").strip()
+        if not target or target.lower() == local:
+            return
+        node = self.db.get_node(target)
+        if not node:
+            node = PeerNode(node_id=target, host="mesh", tcp_port=0)
+        node.last_seen = int(announced_ts or time.time())
+        node.status = NodeStatus.ONLINE
+        self.db.save_node(node)
+
+    def _handle_presence_announce(self, raw_cmd: str, channel_idx: int):
+        msg = (raw_cmd or "").strip()
+        if not msg:
+            return False
+        discover = _DISCOVERY_RE.match(msg)
+        if discover:
+            node_id = discover.group(1)
+            announced = int(discover.group(2)) if discover.group(2) else int(time.time())
+            self._upsert_presence(node_id, announced)
+            if self.mc_bridge and self.mc_bridge.is_connected():
+                local = _config_node_id(self.config)
+                self.mc_bridge.send_channel_message(
+                    channel_idx,
+                    f"PRESENCE {local} {int(time.time())}",
+                )
+            return True
+        presence = _PRESENCE_RE.match(msg)
+        if presence:
+            node_id = presence.group(1)
+            announced = int(presence.group(2)) if presence.group(2) else int(time.time())
+            self._upsert_presence(node_id, announced)
+            return True
+        finger = _FINGER_RE.match(msg)
+        if finger:
+            self._upsert_presence(finger.group(1), int(time.time()))
+            return True
+        return False
+
+    async def _discovery_loop(self):
+        interval = max(30, int(getattr(self.config, "discovery_interval", 120) or 120))
+        channel = int(getattr(self.config, "discovery_channel", 0) or 0)
+        while self._running:
+            try:
+                if self.mc_bridge and self.mc_bridge.is_connected():
+                    node_id = _config_node_id(self.config)
+                    self.mc_bridge.send_channel_message(channel, f"DISCOVER {node_id} {int(time.time())}")
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("Discovery loop failed")
+                await asyncio.sleep(min(30, interval))
+
+    async def _presence_loop(self):
+        interval = max(30, int(getattr(self.config, "presence_interval", 120) or 120))
+        channel = int(getattr(self.config, "presence_channel", 0) or 0)
+        timeout = max(30, int(getattr(self.config, "presence_timeout", 600) or 600))
+        while self._running:
+            try:
+                if self.db:
+                    self.db.mark_stale_nodes_offline(timeout)
+                if self.mc_bridge and self.mc_bridge.is_connected():
+                    node_id = _config_node_id(self.config)
+                    self.mc_bridge.send_channel_message(channel, f"PRESENCE {node_id} {int(time.time())}")
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("Presence loop failed")
+                await asyncio.sleep(min(30, interval))
+
+    async def _retention_loop(self):
+        interval = max(300, int(getattr(self.config, "retention_interval", 3600) or 3600))
+        retention_days = max(1, int(getattr(self.config, "retention_days", 30) or 30))
+        while self._running:
+            try:
+                if self.db:
+                    deleted = self.db.prune_messages(retention_days)
+                    if deleted:
+                        log.info("Retention cleanup removed %s messages", deleted)
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("Retention loop failed")
+                await asyncio.sleep(min(300, interval))
+
     def _handle_meshcore_channel(self, channel_idx: int, text: str, sender_ts: int, rssi: int, snr: int, from_pubkey: str = None, hops: int = 0):
         """Handle incoming channel message — PING/TEST on any channel, respond on same channel + DM."""
         if not text:
@@ -592,6 +728,9 @@ class MeshBBSServer:
             raw_cmd = text.strip()
 
         if len(raw_cmd) > _MAX_CHANNEL_CMD_LEN:
+            return
+
+        if self._handle_presence_announce(raw_cmd, channel_idx):
             return
 
         cmd = _normalize_public_command(raw_cmd)
@@ -696,6 +835,10 @@ class MeshBBSServer:
         self._started_at = int(time.time())
         log.info("MeshCore DM BBS: message @%s", _config_node_id(self.config))
         self._running = True
+        retention_days = max(1, int(getattr(self.config, "retention_days", 30) or 30))
+        deleted = self.db.prune_messages(retention_days)
+        if deleted:
+            log.info("Retention startup cleanup removed %s messages", deleted)
         if bool(getattr(self.config, "auto_finger_enabled", True)):
             self._auto_finger_task = asyncio.create_task(self._auto_finger_loop())
             log.info(
@@ -703,6 +846,22 @@ class MeshBBSServer:
                 getattr(self.config, "auto_finger_channel", 1),
                 getattr(self.config, "auto_finger_interval", 900),
             )
+        if bool(getattr(self.config, "discovery_enabled", True)):
+            self._discovery_task = asyncio.create_task(self._discovery_loop())
+            log.info(
+                "Discovery enabled: channel=%s interval=%ss",
+                getattr(self.config, "discovery_channel", 0),
+                getattr(self.config, "discovery_interval", 120),
+            )
+        if bool(getattr(self.config, "presence_enabled", True)):
+            self._presence_task = asyncio.create_task(self._presence_loop())
+            log.info(
+                "Presence enabled: channel=%s interval=%ss timeout=%ss",
+                getattr(self.config, "presence_channel", 0),
+                getattr(self.config, "presence_interval", 120),
+                getattr(self.config, "presence_timeout", 600),
+            )
+        self._retention_task = asyncio.create_task(self._retention_loop())
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             asyncio.get_event_loop().add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
@@ -717,6 +876,24 @@ class MeshBBSServer:
             self._auto_finger_task.cancel()
             try:
                 await self._auto_finger_task
+            except asyncio.CancelledError:
+                pass
+        if self._discovery_task:
+            self._discovery_task.cancel()
+            try:
+                await self._discovery_task
+            except asyncio.CancelledError:
+                pass
+        if self._presence_task:
+            self._presence_task.cancel()
+            try:
+                await self._presence_task
+            except asyncio.CancelledError:
+                pass
+        if self._retention_task:
+            self._retention_task.cancel()
+            try:
+                await self._retention_task
             except asyncio.CancelledError:
                 pass
         if self.sync:

@@ -23,6 +23,15 @@ class MeshMailConfig:
         "auto_finger_enabled": "1",
         "auto_finger_interval": 900,
         "auto_finger_channel": 1,
+        "discovery_enabled": "1",
+        "discovery_interval": 120,
+        "discovery_channel": 0,
+        "presence_enabled": "1",
+        "presence_interval": 120,
+        "presence_channel": 0,
+        "presence_timeout": 600,
+        "retention_days": 30,
+        "retention_interval": 3600,
     }
 
     def __init__(self, **overrides):
@@ -43,6 +52,15 @@ class MeshMailConfig:
         self.auto_finger_enabled = self._as_bool("auto_finger_enabled", self.auto_finger_enabled)
         self.auto_finger_interval = self._as_int("auto_finger_interval", self.auto_finger_interval)
         self.auto_finger_channel = self._as_int("auto_finger_channel", self.auto_finger_channel)
+        self.discovery_enabled = self._as_bool("discovery_enabled", self.discovery_enabled)
+        self.discovery_interval = self._as_int("discovery_interval", self.discovery_interval)
+        self.discovery_channel = self._as_int("discovery_channel", self.discovery_channel)
+        self.presence_enabled = self._as_bool("presence_enabled", self.presence_enabled)
+        self.presence_interval = self._as_int("presence_interval", self.presence_interval)
+        self.presence_channel = self._as_int("presence_channel", self.presence_channel)
+        self.presence_timeout = self._as_int("presence_timeout", self.presence_timeout)
+        self.retention_days = self._as_int("retention_days", self.retention_days)
+        self.retention_interval = self._as_int("retention_interval", self.retention_interval)
 
     @staticmethod
     def _as_int(name: str, value) -> int:

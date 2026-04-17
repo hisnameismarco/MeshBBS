@@ -436,6 +436,23 @@ class Database:
         ).fetchall()
         return [self._row_to_node(r) for r in rows]
 
+    def mark_stale_nodes_offline(self, stale_after_seconds: int) -> int:
+        """Mark ONLINE peers as OFFLINE if last_seen is older than timeout."""
+        timeout = max(1, int(stale_after_seconds))
+        cutoff = int(time.time()) - timeout
+        cur = self.conn.execute(
+            """
+            UPDATE nodes
+            SET status = ?
+            WHERE status = ?
+              AND last_seen > 0
+              AND last_seen < ?
+            """,
+            (NodeStatus.OFFLINE.value, NodeStatus.ONLINE.value, cutoff),
+        )
+        self.conn.commit()
+        return cur.rowcount if cur.rowcount is not None else 0
+
     def _row_to_node(self, row: sqlite3.Row) -> PeerNode:
         return PeerNode(
             node_id=row['node_id'],
@@ -576,3 +593,31 @@ class Database:
         """Cleanup database"""
         self.conn.execute("VACUUM")
         self.conn.commit()
+
+    def prune_messages(self, retention_days: int) -> int:
+        """Delete expired and old messages (plus inbox rows)."""
+        days = int(retention_days)
+        if days <= 0:
+            return 0
+        cutoff = int(time.time()) - (days * 86400)
+        msg_rows = self.conn.execute(
+            """
+            SELECT msg_id FROM messages
+            WHERE status = ? OR created_at < ?
+            """,
+            (MessageStatus.EXPIRED.value, cutoff),
+        ).fetchall()
+        msg_ids = [str(r["msg_id"]) for r in msg_rows]
+        if not msg_ids:
+            return 0
+        placeholders = ",".join("?" for _ in msg_ids)
+        self.conn.execute(
+            f"DELETE FROM inbox WHERE msg_id IN ({placeholders})",
+            tuple(msg_ids),
+        )
+        cur = self.conn.execute(
+            f"DELETE FROM messages WHERE msg_id IN ({placeholders})",
+            tuple(msg_ids),
+        )
+        self.conn.commit()
+        return cur.rowcount if cur.rowcount is not None else 0
