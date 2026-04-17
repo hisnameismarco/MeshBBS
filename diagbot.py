@@ -20,6 +20,8 @@ NODE_ID = "YOUR-NODE-ID"
 BOT_VERSION = "v0.3"
 RATE_LIMIT = 10          # max commands per minute
 RATE_WINDOW = 60         # seconds
+MAX_DM_COMMAND_LEN = 1024
+MAX_ECHO_LEN = 256
 SYSOP_KEY = os.environ.get("MESHMAIL_SYSOP_KEY", "").strip()
 _START_TIME = int(time.time())
 
@@ -155,7 +157,7 @@ def _cmd_ping_direct(from_name: str = None, grid: str = "", hops: int = 0, resp_
 
 
 def _cmd_echo_direct(text: str) -> str:
-    return text
+    return text[:MAX_ECHO_LEN]
 
 
 def _cmd_status_direct(from_pubkey: str, db) -> str:
@@ -297,6 +299,8 @@ class DiagBot:
         if not _check_rate_limit(from_pubkey):
             return "RATE LIMIT: max 10 commands/minute"
         cmd = text.strip()
+        if len(cmd) > MAX_DM_COMMAND_LEN:
+            return f"Error: command too long (max {MAX_DM_COMMAND_LEN} chars)"
         if cmd.startswith("!"):
             cmd = cmd[1:]
         if not cmd:

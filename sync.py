@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 import hashlib
+import logging
 from typing import Dict, List, Set, Optional
 from dataclasses import asdict
 
@@ -14,6 +15,8 @@ from .models import (
 )
 from .store import Database
 from .routing import RoutingEngine
+
+log = logging.getLogger("MeshBBS.sync")
 
 
 class SyncProtocol:
@@ -164,10 +167,18 @@ class SyncProtocol:
         self.routing.process_inbound(msg)
         return "stored"
 
-    def process_ack(self, msg_id: str):
+    def process_ack(self, msg_id: str, peer_node_id: Optional[str] = None) -> bool:
         """Message confirmed by peer - remove from queue"""
-        # Find and update queue entries
-        self.db.remove_from_queue(msg_id, peer_node_id)
+        if not msg_id:
+            return False
+        try:
+            if peer_node_id:
+                return self.db.remove_from_queue(msg_id, peer_node_id)
+            removed = self.db.remove_all_queue_entries(msg_id)
+            return removed > 0
+        except Exception:
+            log.exception("Failed to process ACK for msg_id=%s peer=%s", msg_id, peer_node_id)
+            return False
 
     # ─── Helpers ────────────────────────────────────────────
 
@@ -212,7 +223,7 @@ class SyncEngine:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Sync loop error: {e}")
+                log.exception("Sync loop error")
 
     async def sync_peer(self, peer: PeerNode) -> bool:
         """
@@ -232,7 +243,7 @@ class SyncEngine:
             # Here we just log
             return True
         except Exception as e:
-            print(f"Sync with {peer.node_id} failed: {e}")
+            log.exception("Sync with %s failed", peer.node_id)
             return False
 
     async def sync_all_peers(self):

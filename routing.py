@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import hashlib
+import logging
 from typing import Optional, List, Dict, Set, Callable
 from dataclasses import asdict
 
@@ -15,6 +16,8 @@ from .models import (
     MAX_CHUNKS, MAX_BODY_LEN
 )
 from .store import Database
+
+log = logging.getLogger("MeshBBS.routing")
 
 
 class RoutingEngine:
@@ -65,7 +68,7 @@ class RoutingEngine:
             msg.update_after_hop()
             return msg
         except Exception as e:
-            print(f"handle_inbound error: {e}")
+            log.exception("handle_inbound error")
             return None
 
     def route_message(self, msg: MeshMessage) -> List[tuple]:
@@ -110,7 +113,8 @@ class RoutingEngine:
         msg.fwd_history.append(self.node_id)
 
         # Save message
-        self.db.save_message(msg)
+        if not self.db.save_message(msg):
+            return "store_failed"
 
         # Local delivery
         if not to_node or to_node == self.node_id:
@@ -237,7 +241,7 @@ class RoutingEngine:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"queue processor error: {e}")
+                log.exception("queue processor error")
 
     async def _process_queue_once(self):
         """Process pending queue entries"""

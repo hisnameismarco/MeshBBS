@@ -22,6 +22,10 @@ class Database:
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = NORMAL")
         self._init_schema()
 
     def _init_schema(self):
@@ -129,10 +133,14 @@ class Database:
             );
 
             CREATE INDEX IF NOT EXISTS idx_messages_to_addr ON messages(to_addr);
+            CREATE INDEX IF NOT EXISTS idx_messages_to_addr_created ON messages(to_addr, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(msg_type);
             CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
             CREATE INDEX IF NOT EXISTS idx_inbox_user ON inbox(to_user);
+            CREATE INDEX IF NOT EXISTS idx_inbox_user_deleted_received ON inbox(to_user, is_deleted, received_at DESC);
             CREATE INDEX IF NOT EXISTS idx_forward_queue_retry ON forward_queue(next_retry);
+            CREATE INDEX IF NOT EXISTS idx_forward_queue_status_priority_retry
+                ON forward_queue(status, priority, next_retry);
         """)
         self.conn.commit()
 
@@ -300,18 +308,23 @@ class Database:
         rows = self.conn.execute(sql, (user,)).fetchall()
         result = [(dict(r)) for r in rows]
         
-        # If no results and node_id given, try matching to_addr by node_id
-        if not result and node_id:
+        # If no direct inbox entries exist and caller uses an 8-char hex pubkey prefix,
+        # allow a fallback exact-address lookup for that local user only.
+        is_pubkey_prefix = (
+            len(user) == 8 and
+            all(c in "0123456789abcdefABCDEF" for c in user)
+        )
+        if not result and node_id and is_pubkey_prefix:
             sql2 = """
                 SELECT i.*, m.subject, m.from_addr, m.created_at
                 FROM inbox i
                 JOIN messages m ON i.msg_id = m.msg_id
-                WHERE m.to_addr LIKE ? AND i.is_deleted = 0
+                WHERE m.to_addr = ? AND i.is_deleted = 0
             """
             if not include_read:
                 sql2 += " AND i.is_read = 0"
             sql2 += " ORDER BY i.received_at DESC"
-            rows = self.conn.execute(sql2, (f'%@{node_id}',)).fetchall()
+            rows = self.conn.execute(sql2, (f'{user.lower()}@{node_id}',)).fetchall()
             result = [(dict(r)) for r in rows]
         
         return result
@@ -416,6 +429,14 @@ class Database:
         )
         self.conn.commit()
         return True
+
+    def remove_all_queue_entries(self, msg_id: str) -> int:
+        cur = self.conn.execute(
+            "DELETE FROM forward_queue WHERE msg_id = ?",
+            (msg_id,)
+        )
+        self.conn.commit()
+        return cur.rowcount if cur.rowcount is not None else 0
 
     def _row_to_queue(self, row: sqlite3.Row) -> QueueEntry:
         return QueueEntry(

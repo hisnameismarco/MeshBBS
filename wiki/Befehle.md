@@ -18,6 +18,7 @@ Zeigt empfangene Nachrichten (max 10).
 
 ### `!MSG @username <betreff> [text>`
 Sendet eine Nachricht an einen anderen User.
+Erweiterte Syntax: `!MSG @username[@node] | <betreff> | [text]`
 
 ### `!DELETE <nummer>`
 Löscht eine Nachricht aus der Inbox (Nummern aus `!INBOX`).

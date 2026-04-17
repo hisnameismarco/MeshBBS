@@ -40,7 +40,8 @@ Sende `bboard` → zeigt aktuelle Nachrichten auf dem Kanal (öffentlich).
 | `!HELP` | Hilfe anzeigen |
 | `!WHOAMI` | Deine Node-Info anzeigen |
 | `!INBOX` | Postein- und Ausgang anzeigen |
-| `!MSG <node>@<id> <text>` | Nachricht an andere Node senden |
+| `!MSG @user[@node] <betreff> [text]` | Nachricht senden (auch `!MSG @user[@node] \| <betreff> \| [text]`) |
+| `!DELETE <nummer>` | Nachricht aus der Inbox löschen |
 | `!NODES` | Liste aktiver Nodes im Netz |
 | `!STAT` | BBS-Statistiken |
 | `!PING` | Ping an diesen BBS |
