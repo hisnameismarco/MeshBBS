@@ -18,6 +18,8 @@ class MeshMailConfig:
         "default_user": "sysop",
 
         "location": "angekommen in DEINE-REGION",
+        "latitude": 51.898458,
+        "longitude": 12.464044,
     }
 
     def __init__(self, **overrides):
@@ -33,8 +35,14 @@ class MeshMailConfig:
         self.sync_interval = int(self.sync_interval)
         self.queue_interval = int(self.queue_interval)
         self.max_body_size = int(self.max_body_size)
+        self.latitude = float(self.latitude)
+        self.longitude = float(self.longitude)
 
     def node_addr(self, user: str = "") -> str:
         if user:
             return f"{user}@{self.node_id}"
         return f"@{self.node_id}"
+
+
+# Backward-compatible name expected by main.py and legacy imports.
+MeshBBSConfig = MeshMailConfig
