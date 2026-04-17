@@ -16,7 +16,7 @@ replacement = '''    def _send_msg(self, user_addr: str, args: str) -> str:
         body = parts[2] if len(parts) > 2 else ""
         # Use fresh connection to avoid DB lock with shared self.db
         import sqlite3, time, uuid
-        from MeshBBS.models import MessageStatus, parse_address
+        from meshmail.models import MessageStatus, parse_address
         try:
             db = sqlite3.connect(self.config.db_path, isolation_level=None)
             msg_id = str(uuid.uuid4())

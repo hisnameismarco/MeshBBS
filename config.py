@@ -46,3 +46,4 @@ class MeshMailConfig:
 
 # Backward-compatible name expected by main.py and legacy imports.
 MeshBBSConfig = MeshMailConfig
+MeshBBSConfig = MeshMailConfig

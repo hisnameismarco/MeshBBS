@@ -13,13 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from MeshBBS.config import MeshBBSConfig
-from MeshBBS.store import Database
-from MeshBBS.routing import RoutingEngine
-from MeshBBS.sync import SyncEngine
-from MeshBBS.meshcore_if import MeshCoreBridge
-from MeshBBS.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority, MeshMessage, InboxEntry
-from MeshBBS.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
+from meshmail.config import MeshBBSConfig
+from meshmail.store import Database
+from meshmail.routing import RoutingEngine
+from meshmail.sync import SyncEngine
+from meshmail.meshcore_if import MeshCoreBridge
+from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority, MeshMessage, InboxEntry
+from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
 
 log = logging.getLogger("MeshBBS")
 
