@@ -19,7 +19,7 @@ from meshmail.routing import RoutingEngine
 from meshmail.sync import SyncEngine
 from meshmail.meshcore_if import MeshCoreBridge
 from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority, MeshMessage, InboxEntry
-from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct
+from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct, _grid_from_config
 
 log = logging.getLogger("MeshBBS")
 
@@ -108,14 +108,8 @@ def _sanitize_display_name(name: str) -> str:
     return raw if _VALID_DISPLAY_NAME_RE.fullmatch(raw) else ""
 
 
-def _maidenhead_6(lat: float, lon: float) -> str:
-    lon_sq = chr(ord('A') + int((lon + 180) / 18) % 18)
-    lat_sq = chr(ord('A') + int((lat + 90) / 15) % 18)
-    lon_sub = str(int((lon + 180) % 18 / 5))
-    lat_sub = str(int((lat + 90) % 15 / 2.5))
-    lon_subsub = str(int(((lon + 180) % 5) / 0.5))
-    lat_subsub = str(int(((lat + 90) % 2.5) / 0.25))
-    return f"{lon_sq}{lat_sq}{lon_sub}{lat_sub}{lon_subsub}{lat_subsub}"
+def _ping_grid(config: MeshBBSConfig) -> str:
+    return _grid_from_config(config)
 
 
 # ─── Channel Handlers (public commands, no ! prefix) ─────────────────────────
@@ -139,7 +133,7 @@ def _normalize_public_command(text: str) -> str:
 def _setup_channel_handlers():
     """Register public channel commands (no ! prefix needed)."""
     _CHANNEL_HANDLERS[1] = {
-        "PING": lambda bbs, from_pk, args: _cmd_ping_direct(),
+        "PING": lambda bbs, from_pk, args: _cmd_ping_direct(grid=_ping_grid(bbs.config)),
     }
     _CHANNEL_HANDLERS[2] = {
         "TEST": lambda bbs, from_pk, args: _cmd_bboard_direct(bbs.db),
@@ -287,7 +281,7 @@ def _setup_bbs_commands():
     # ── DiagBot commands (registered in BBS registry) ──────────────────────
     @bbs_command("PING")
     def cmd_ping(bbs, from_pk, args):
-        return _cmd_ping_direct()
+        return _cmd_ping_direct(grid=_ping_grid(bbs.config))
 
     @bbs_command("ECHO")
     def cmd_echo(bbs, from_pk, args):
@@ -327,7 +321,7 @@ def _setup_bbs_commands():
 # ─── DiagBot standalone command wrappers (for BBS registry) ──────────────────
 
 def _diag_ping(bbs, from_pk, args):
-    return _cmd_ping_direct()
+    return _cmd_ping_direct(grid=_ping_grid(bbs.config))
 
 def _diag_echo(bbs, from_pk, args):
     return args or "?"
@@ -387,9 +381,7 @@ class MeshBBSServer:
 
         try:
             # Grid square and location from config
-            lat = getattr(self.config, "latitude", 51.898458)
-            lon = getattr(self.config, "longitude", 12.464044)
-            grid = _maidenhead_6(float(lat), float(lon))
+            grid = _ping_grid(self.config)
             location = str(getattr(self.config, "location", "angekommen in DEINE-REGION")).strip()
             if not location:
                 location = "angekommen in DEINE-REGION"
@@ -468,7 +460,7 @@ class MeshBBSServer:
         else:
             log.warning("MeshCore bridge failed - running in degraded mode")
 
-        self.diagbot = DiagBot(db=self.db, routing=self.routing, mc_bridge=self.mc_bridge)
+        self.diagbot = DiagBot(db=self.db, routing=self.routing, mc_bridge=self.mc_bridge, config=self.config)
         log.info("DiagBot initialized")
 
         self.routing = RoutingEngine(self.db, self.config.node_id, self.config.tcp_host, self.config.tcp_port)

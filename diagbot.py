@@ -132,20 +132,34 @@ def _ensure_test_area(db) -> str:
 # ─── Direct command implementations ──────────────────────────────────────────
 
 def _maidenhead(lat: float, lon: float) -> str:
-    """Convert lat/lon to maidenhead grid square (6 chars)."""
-    import math
-    # 18° longitude bands, 15° latitude bands
-    lon_band = int((lon + 180) / 18) + 1
-    lat_band = int((lat + 90) / 15) + 1
-    lon_sq = chr(ord('A') + (lon_band - 1) % 18)
-    lat_sq = chr(ord('A') + (lat_band - 1) % 18)
-    # Subsquares: 5° lon x 2.5° lat
-    lon_sub = int((lon + 180) % 18 / 5)
-    lat_sub = int((lat + 90) % 15 / 2.5)
-    # Final subsubsquares: 30' lon x 15' lat
-    lon_subsub = int(((lon + 180) % 5) / 0.5)
-    lat_subsub = int(((lat + 90) % 2.5) / 0.25)
-    return f"{lon_sq}{lat_sq}{lon_sub}{lat_sub}{lon_subsub}{lat_subsub}"
+    """Convert lat/lon to a Maidenhead 6-char locator (AA00aa)."""
+    # Fields: 20 deg lon / 10 deg lat
+    adj_lon = lon + 180.0
+    adj_lat = lat + 90.0
+    field_lon = int(adj_lon // 20)
+    field_lat = int(adj_lat // 10)
+    # Squares: 2 deg lon / 1 deg lat
+    square_lon = int((adj_lon % 20) // 2)
+    square_lat = int((adj_lat % 10) // 1)
+    # Subsquares: 5' lon / 2.5' lat (1/24 of square), encoded as a-x
+    subsq_lon = int(((adj_lon % 2) / 2) * 24)
+    subsq_lat = int(((adj_lat % 1) / 1) * 24)
+    return (
+        f"{chr(ord('A') + field_lon)}{chr(ord('A') + field_lat)}"
+        f"{square_lon}{square_lat}"
+        f"{chr(ord('a') + subsq_lon)}{chr(ord('a') + subsq_lat)}"
+    )
+
+
+def _grid_from_config(config, default_grid: str = "") -> str:
+    if config is None:
+        return default_grid
+    try:
+        lat = float(getattr(config, "latitude", 51.898458))
+        lon = float(getattr(config, "longitude", 12.464044))
+        return _maidenhead(lat, lon)
+    except Exception:
+        return default_grid
 
 
 def _cmd_ping_direct(from_name: str = None, grid: str = "", hops: int = 0, resp_s: int = 0) -> str:
@@ -285,10 +299,11 @@ def _cmd_selftest_direct(db, routing=None, mc_bridge=None) -> str:
 class DiagBot:
     """Diagnostic bot for MeshBBS. Mostly deprecated - BBS commands use direct wrappers."""
 
-    def __init__(self, db=None, routing=None, mc_bridge=None):
+    def __init__(self, db=None, routing=None, mc_bridge=None, config=None):
         self.db = db
         self.routing = routing
         self.mc_bridge = mc_bridge
+        self.config = config
         self._start_time = _START_TIME
         self._node_id = NODE_ID
         self._version = BOT_VERSION
@@ -308,7 +323,7 @@ class DiagBot:
         log.info("[DIAG] from=%s cmd=%s", from_pubkey[:12], cmd[:60])
         upper = cmd.upper()
         if upper == "PING":
-            return _cmd_ping_direct()
+            return _cmd_ping_direct(grid=_grid_from_config(self.config))
         if upper.startswith("ECHO "):
             return cmd[5:]
         if upper == "SELFTEST":
