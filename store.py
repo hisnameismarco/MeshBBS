@@ -289,7 +289,16 @@ class Database:
             print(f"save_inbox_entry error: {e}")
             return False
 
-    def get_inbox(self, user: str, include_read: bool = False, node_id: str = "") -> List[tuple]:
+    def get_inbox(
+        self,
+        user: str,
+        include_read: bool = False,
+        node_id: str = "",
+        *,
+        sort_desc: bool = True,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[tuple]:
         """Get inbox entries for user with message details.
         
         If user is a pubkey prefix (8 hex chars), look up by to_addr matching user@node_id.
@@ -297,15 +306,19 @@ class Database:
         """
         # Try direct match first
         sql = """
-            SELECT i.*, m.subject, m.from_addr, m.created_at
+            SELECT i.*, m.subject, m.from_addr, m.created_at, m.ref_msg_id
             FROM inbox i
             JOIN messages m ON i.msg_id = m.msg_id
             WHERE i.to_user = ? AND i.is_deleted = 0
         """
         if not include_read:
             sql += " AND i.is_read = 0"
-        sql += " ORDER BY i.received_at DESC"
-        rows = self.conn.execute(sql, (user,)).fetchall()
+        sql += f" ORDER BY i.received_at {'DESC' if sort_desc else 'ASC'}"
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            rows = self.conn.execute(sql, (user, int(limit), max(0, int(offset)))).fetchall()
+        else:
+            rows = self.conn.execute(sql, (user,)).fetchall()
         result = [(dict(r)) for r in rows]
         
         # If no direct inbox entries exist and caller uses an 8-char hex pubkey prefix,
@@ -316,18 +329,65 @@ class Database:
         )
         if not result and node_id and is_pubkey_prefix:
             sql2 = """
-                SELECT i.*, m.subject, m.from_addr, m.created_at
+                SELECT i.*, m.subject, m.from_addr, m.created_at, m.ref_msg_id
                 FROM inbox i
                 JOIN messages m ON i.msg_id = m.msg_id
                 WHERE m.to_addr = ? AND i.is_deleted = 0
             """
             if not include_read:
                 sql2 += " AND i.is_read = 0"
-            sql2 += " ORDER BY i.received_at DESC"
-            rows = self.conn.execute(sql2, (f'{user.lower()}@{node_id}',)).fetchall()
+            sql2 += f" ORDER BY i.received_at {'DESC' if sort_desc else 'ASC'}"
+            if limit is not None:
+                sql2 += " LIMIT ? OFFSET ?"
+                rows = self.conn.execute(
+                    sql2,
+                    (f'{user.lower()}@{node_id}', int(limit), max(0, int(offset))),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(sql2, (f'{user.lower()}@{node_id}',)).fetchall()
             result = [(dict(r)) for r in rows]
         
         return result
+
+    def inbox_count(self, user: str, include_read: bool = True) -> int:
+        sql = "SELECT COUNT(*) AS c FROM inbox WHERE to_user = ? AND is_deleted = 0"
+        params: List[Any] = [user]
+        if not include_read:
+            sql += " AND is_read = 0"
+        row = self.conn.execute(sql, tuple(params)).fetchone()
+        return int(row["c"]) if row else 0
+
+    def get_thread_messages(self, seed_msg_id: str, user: str, node_id: str = "") -> List[MeshMessage]:
+        seed = self.get_message(seed_msg_id)
+        if not seed:
+            return []
+        thread_root = seed.thread_id or seed.ref_msg_id or seed.msg_id
+        to_addr = f"{user}@{node_id}" if node_id else ""
+        rows = self.conn.execute(
+            """
+            SELECT m.*
+            FROM messages m
+            JOIN inbox i ON i.msg_id = m.msg_id
+            WHERE i.to_user = ?
+              AND i.is_deleted = 0
+              AND (
+                m.msg_id = ?
+                OR m.ref_msg_id = ?
+                OR m.thread_id = ?
+              )
+              AND (? = '' OR m.to_addr = ?)
+            ORDER BY m.created_at ASC
+            """,
+            (user, thread_root, thread_root, thread_root, to_addr, to_addr),
+        ).fetchall()
+        return [self._row_to_message(r) for r in rows]
+
+    def queue_depth(self) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM forward_queue WHERE status IN (?, ?)",
+            (QueueStatus.PENDING.value, QueueStatus.FAILED.value),
+        ).fetchone()
+        return int(row["c"]) if row else 0
 
     def mark_read(self, msg_id: str, user: str) -> bool:
         self.conn.execute(

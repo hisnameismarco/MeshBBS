@@ -1,6 +1,6 @@
 """MeshBBS Konfiguration"""
 import os
-from pathlib import Path
+from typing import Optional
 
 
 class MeshMailConfig:
@@ -18,8 +18,11 @@ class MeshMailConfig:
         "default_user": "sysop",
 
         "location": "angekommen in DEINE-REGION",
-        "latitude": 51.898458,
-        "longitude": 12.464044,
+        "latitude": "",
+        "longitude": "",
+        "auto_finger_enabled": "1",
+        "auto_finger_interval": 900,
+        "auto_finger_channel": 1,
     }
 
     def __init__(self, **overrides):
@@ -31,12 +34,45 @@ class MeshMailConfig:
             setattr(self, key, val)
 
         # Ensure types
-        self.tcp_port = int(self.tcp_port)
-        self.sync_interval = int(self.sync_interval)
-        self.queue_interval = int(self.queue_interval)
-        self.max_body_size = int(self.max_body_size)
-        self.latitude = float(self.latitude)
-        self.longitude = float(self.longitude)
+        self.tcp_port = self._as_int("tcp_port", self.tcp_port)
+        self.sync_interval = self._as_int("sync_interval", self.sync_interval)
+        self.queue_interval = self._as_int("queue_interval", self.queue_interval)
+        self.max_body_size = self._as_int("max_body_size", self.max_body_size)
+        self.latitude = self._as_optional_float("latitude", self.latitude)
+        self.longitude = self._as_optional_float("longitude", self.longitude)
+        self.auto_finger_enabled = self._as_bool("auto_finger_enabled", self.auto_finger_enabled)
+        self.auto_finger_interval = self._as_int("auto_finger_interval", self.auto_finger_interval)
+        self.auto_finger_channel = self._as_int("auto_finger_channel", self.auto_finger_channel)
+
+    @staticmethod
+    def _as_int(name: str, value) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid configuration: {name} must be an integer")
+
+    @staticmethod
+    def _as_optional_float(name: str, value) -> Optional[float]:
+        if value is None:
+            return None
+        raw = str(value).strip()
+        if raw == "":
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid configuration: {name} must be a float")
+
+    @staticmethod
+    def _as_bool(name: str, value) -> bool:
+        if isinstance(value, bool):
+            return value
+        raw = str(value).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off", ""}:
+            return False
+        raise ValueError(f"Invalid configuration: {name} must be a boolean-like value")
 
     def node_addr(self, user: str = "") -> str:
         if user:
@@ -45,5 +81,4 @@ class MeshMailConfig:
 
 
 # Backward-compatible name expected by main.py and legacy imports.
-MeshBBSConfig = MeshMailConfig
 MeshBBSConfig = MeshMailConfig

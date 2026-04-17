@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """MeshBBS Entry Point — MeshCore BBS via TCP Bridge"""
 import asyncio
-import os
 import sys
 import signal
-import hashlib
 import logging
 import time
 import uuid
 import re
+from typing import Optional
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -19,7 +18,7 @@ from meshmail.routing import RoutingEngine
 from meshmail.sync import SyncEngine
 from meshmail.meshcore_if import MeshCoreBridge
 from meshmail.models import MessageType, MessageStatus, MailboxUser, parse_address, Priority, MeshMessage, InboxEntry
-from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct, _grid_from_config
+from meshmail.diagbot import DiagBot, _cmd_ping_direct, _cmd_echo_direct, _cmd_selftest_direct, _cmd_status_direct, _cmd_queues_direct, _cmd_peers_direct, _cmd_lastsync_direct, _cmd_bboard_direct, _grid_from_config
 
 log = logging.getLogger("MeshBBS")
 
@@ -33,13 +32,56 @@ _MAX_SUBJECT_LEN = 40
 _MAX_BODY_LEN = 512
 _MAX_DM_TEXT_LEN = 1024
 _MAX_CHANNEL_CMD_LEN = 128
+_INBOX_PAGE_SIZE = 10
 _VALID_DISPLAY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+_REF_PREFIX_RE = re.compile(r"^(?:ref:|>>)\s*([A-Za-z0-9-]{8,64})\s*(?:\r?\n|$)", re.IGNORECASE)
+_ERR = {
+    "usage_msg_simple": "ERROR usage: !MSG @<username>[@<node>] <subject> [text]",
+    "usage_msg_extended": "ERROR usage: !MSG @<username>[@<node>] | <subject> | [text]",
+    "usage_delete": "ERROR usage: !DELETE <number>",
+    "db_unavailable": "ERROR database unavailable",
+    "sender_invalid": "ERROR sender identity invalid",
+    "dm_invalid_payload": "ERROR invalid DM payload",
+    "dm_too_long": f"ERROR DM too long (max {_MAX_DM_TEXT_LEN} chars)",
+    "invalid_username": "ERROR invalid username",
+    "invalid_destination_node": "ERROR invalid destination node",
+    "invalid_subject_empty": "ERROR subject must not be empty",
+    "invalid_subject_too_long": f"ERROR subject exceeds {_MAX_SUBJECT_LEN} chars",
+    "invalid_subject_chars": "ERROR subject contains unsupported control characters",
+    "invalid_body_too_long": f"ERROR body exceeds {_MAX_BODY_LEN} chars",
+    "invalid_body_chars": "ERROR body contains unsupported control characters",
+    "msg_save_failed": "ERROR message persistence failed",
+    "inbox_save_failed": "ERROR inbox persistence failed",
+    "msg_save_internal": "ERROR internal failure while saving message",
+    "inbox_item_missing": "ERROR inbox item not found",
+    "inbox_item_malformed": "ERROR malformed inbox entry",
+    "delete_failed": "ERROR could not delete message",
+    "usage_thread": "ERROR usage: !THREAD <inbox-number|message-id>",
+    "thread_not_found": "ERROR thread not found",
+    "cmd_internal_failure": "ERROR internal command failure",
+}
 
 def bbs_command(name):
     def decorator(func):
         BBS_COMMANDS[name.upper()] = func
         return func
     return decorator
+
+
+def _with_crlf(text: str) -> str:
+    return f"{text}.\r\n"
+
+
+def _err(key: str) -> str:
+    return _with_crlf(_ERR[key])
+
+
+def _config_node_id(config: MeshBBSConfig) -> str:
+    return str(getattr(config, "node_id", "") or MeshBBSConfig.DEFAULTS["node_id"])
+
+
+def _contains_control_chars(value: str) -> bool:
+    return any((ord(ch) < 32 and ch not in ("\n", "\r", "\t")) for ch in value)
 
 
 def _sender_username(from_pk: str) -> str:
@@ -55,28 +97,28 @@ def _sender_username(from_pk: str) -> str:
 def _parse_msg_args(args: str, default_node_id: str):
     payload = args.strip()
     if not payload.startswith("@"):
-        raise ValueError("Usage: !MSG @<username>[@<node>] <subject> [text]")
+        raise ValueError(_ERR["usage_msg_simple"])
 
     payload = payload[1:].strip()
     if not payload:
-        raise ValueError("Usage: !MSG @<username>[@<node>] <subject> [text]")
+        raise ValueError(_ERR["usage_msg_simple"])
 
     # New extended format: !MSG @user[@node] | subject | body text
     if "|" in payload:
         parts = [p.strip() for p in payload.split("|", 2)]
         if len(parts) < 2 or not parts[0] or not parts[1]:
-            raise ValueError("Usage: !MSG @<username>[@<node>] | <subject> | [text]")
+            raise ValueError(_ERR["usage_msg_extended"])
         target = parts[0]
         subject = parts[1]
         body = parts[2] if len(parts) > 2 else ""
     else:
         first = payload.split(maxsplit=1)
         if len(first) < 2:
-            raise ValueError("Usage: !MSG @<username>[@<node>] <subject> [text]")
+            raise ValueError(_ERR["usage_msg_simple"])
         target = first[0].strip()
         rest = first[1].strip()
         if not rest:
-            raise ValueError("Usage: !MSG @<username>[@<node>] <subject> [text]")
+            raise ValueError(_ERR["usage_msg_simple"])
         second = rest.split(maxsplit=1)
         subject = second[0]
         body = second[1] if len(second) > 1 else ""
@@ -89,15 +131,23 @@ def _parse_msg_args(args: str, default_node_id: str):
 
     to_user = to_user.strip().lower()
     if not _VALID_USER_RE.fullmatch(to_user):
-        raise ValueError("Error: invalid username.")
+        raise ValueError(_ERR["invalid_username"])
     if not _VALID_NODE_RE.fullmatch(to_node):
-        raise ValueError("Error: invalid destination node.")
+        raise ValueError(_ERR["invalid_destination_node"])
 
-    clean_subject = subject.strip()[:_MAX_SUBJECT_LEN]
+    clean_subject = subject.strip()
     if not clean_subject:
-        raise ValueError("Error: subject must not be empty.")
+        raise ValueError(_ERR["invalid_subject_empty"])
+    if len(clean_subject) > _MAX_SUBJECT_LEN:
+        raise ValueError(_ERR["invalid_subject_too_long"])
+    if _contains_control_chars(clean_subject):
+        raise ValueError(_ERR["invalid_subject_chars"])
 
-    clean_body = body.strip()[:_MAX_BODY_LEN]
+    clean_body = body.strip()
+    if len(clean_body) > _MAX_BODY_LEN:
+        raise ValueError(_ERR["invalid_body_too_long"])
+    if _contains_control_chars(clean_body):
+        raise ValueError(_ERR["invalid_body_chars"])
     return to_user, to_node, clean_subject, clean_body
 
 
@@ -110,6 +160,74 @@ def _sanitize_display_name(name: str) -> str:
 
 def _ping_grid(config: MeshBBSConfig) -> str:
     return _grid_from_config(config)
+
+
+def _parse_inbox_args(args: str):
+    page = 1
+    include_read = True
+    sort_desc = True
+    for tok in args.split():
+        raw = tok.strip().lower()
+        if not raw:
+            continue
+        if raw.isdigit():
+            page = max(1, int(raw))
+            continue
+        if raw.startswith("page=") and raw[5:].isdigit():
+            page = max(1, int(raw[5:]))
+            continue
+        if raw in {"all", "read"}:
+            include_read = True
+            continue
+        if raw in {"unread", "new"}:
+            include_read = False
+            continue
+        if raw in {"asc", "oldest"}:
+            sort_desc = False
+            continue
+        if raw in {"desc", "newest"}:
+            sort_desc = True
+            continue
+    return page, include_read, sort_desc
+
+
+def _strip_ref_prefix(body: str):
+    if not body:
+        return "", ""
+    m = _REF_PREFIX_RE.match(body)
+    if not m:
+        return "", body
+    ref = m.group(1).strip()
+    rest = body[m.end():].lstrip("\r\n ")
+    return ref, rest
+
+
+def _thread_id_from_reference(db: Database, ref_msg_id: str) -> str:
+    if not ref_msg_id:
+        return ""
+    ref_msg = db.get_message(ref_msg_id)
+    if not ref_msg:
+        return ""
+    return ref_msg.thread_id or ref_msg.msg_id
+
+
+def _build_info_response(bbs) -> str:
+    node_id = _config_node_id(bbs.config)
+    grid = _ping_grid(bbs.config) or "-"
+    location = str(getattr(bbs.config, "location", "") or "-")
+    uptime_s = max(0, int(time.time()) - int(getattr(bbs, "_started_at", int(time.time()))))
+    nodes = bbs.db.get_all_nodes() if bbs.db else []
+    online = sum(1 for n in nodes if n.status.value == 1)
+    total = len(nodes)
+    queue_depth = bbs.db.queue_depth() if bbs.db else 0
+    return (
+        f"Node: {node_id}\r\n"
+        f"Grid: {grid}\r\n"
+        f"Location: {location}\r\n"
+        f"Peers: {online}/{total}\r\n"
+        f"Queue: {queue_depth}\r\n"
+        f"Uptime: {uptime_s}s\r\n"
+    )
 
 
 # ─── Channel Handlers (public commands, no ! prefix) ─────────────────────────
@@ -150,7 +268,7 @@ def _setup_bbs_commands():
     def cmd_help(bbs, from_pk, args):
         return (
             "MeshBBS BBS | CMDS:\r\n"
-            "!HELP !STAT !INBOX\r\n"
+            "!HELP !STAT !INFO !INBOX !THREAD\r\n"
             "!MSG !DELETE !WHOAMI !NODES\r\n"
             "!PING !ECHO !SELFTEST\r\n"
         )
@@ -158,7 +276,7 @@ def _setup_bbs_commands():
     @bbs_command("STAT")
     def cmd_stat(bbs, from_pk, args):
         stats = bbs.routing.get_stats() if bbs.routing else {}
-        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+        node_id = _config_node_id(bbs.config)
         return (
             f"MeshBBS BBS: {node_id}\r\n"
             f"Messages: {stats.get('total_messages', 0)}\r\n"
@@ -177,40 +295,112 @@ def _setup_bbs_commands():
             lines.append(f"  {n.node_id} | {st}")
         return "\r\n".join(lines)
 
+    @bbs_command("INFO")
+    def cmd_info(bbs, from_pk, args):
+        return _build_info_response(bbs)
+
     @bbs_command("INBOX")
     def cmd_inbox(bbs, from_pk, args):
+        if not bbs.db:
+            return _err("db_unavailable")
         username = _sender_username(from_pk)
         if not username:
-            return "Error: sender identity invalid.\r\n"
-        node_id = getattr(bbs.config, 'node_id', 'YOUR-NODE-ID')
-        entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id)[:10] if bbs.db else []
+            return _err("sender_invalid")
+        page, include_read, sort_desc = _parse_inbox_args(args)
+        node_id = _config_node_id(bbs.config)
+        total = bbs.db.inbox_count(username, include_read=True)
+        unread = bbs.db.inbox_count(username, include_read=False)
+        shown_total = unread if not include_read else total
+        pages = max(1, (shown_total + _INBOX_PAGE_SIZE - 1) // _INBOX_PAGE_SIZE)
+        page = min(page, pages)
+        offset = (page - 1) * _INBOX_PAGE_SIZE
+        entries = bbs.db.get_inbox(
+            username,
+            include_read=include_read,
+            node_id=node_id,
+            sort_desc=sort_desc,
+            limit=_INBOX_PAGE_SIZE,
+            offset=offset,
+        )
         if not entries:
             return "Inbox empty.\r\n"
-        lines = ["Your messages:"]
+        lines = [
+            f"INBOX page {page}/{pages} "
+            f"filter={'all' if include_read else 'unread'} sort={'desc' if sort_desc else 'asc'} "
+            f"total={total} unread={unread}"
+        ]
         for i, e in enumerate(entries, 1):
-            lines.append(f"  {i}. {e['from_addr']} | {e['subject'][:30]}")
+            marker = "*" if not e.get("is_read") else " "
+            row = offset + i
+            subject = str(e.get("subject", ""))[:30]
+            ref = str(e.get("ref_msg_id", "") or "")
+            ref_suffix = f" ↳{ref[:8]}" if ref else ""
+            lines.append(f" {marker}{row:02d}. {e['from_addr']} | {subject}{ref_suffix}")
+        return "\r\n".join(lines)
+
+    @bbs_command("THREAD")
+    def cmd_thread(bbs, from_pk, args):
+        if not bbs.db:
+            return _err("db_unavailable")
+        username = _sender_username(from_pk)
+        if not username:
+            return _err("sender_invalid")
+        needle = args.strip()
+        if not needle:
+            return _err("usage_thread")
+        node_id = _config_node_id(bbs.config)
+        msg_id = needle
+        if needle.isdigit():
+            idx = int(needle)
+            if idx <= 0:
+                return _err("usage_thread")
+            entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id, limit=100)
+            if idx > len(entries):
+                return _err("inbox_item_missing")
+            msg_id = str(entries[idx - 1].get("msg_id", "")).strip()
+        if not msg_id:
+            return _err("inbox_item_malformed")
+        messages = bbs.db.get_thread_messages(msg_id, username, node_id=node_id)
+        if not messages:
+            return _err("thread_not_found")
+        lines = [f"THREAD {msg_id[:8]} ({len(messages)} messages)"]
+        for m in messages[-10:]:
+            ts = time.strftime("%d.%m %H:%M", time.localtime(m.created_at))
+            ref = f" ref={m.ref_msg_id[:8]}" if m.ref_msg_id else ""
+            lines.append(f" {ts} {m.from_addr} -> {m.to_addr} | {m.subject[:20]}{ref}")
         return "\r\n".join(lines)
 
     @bbs_command("WHOAMI")
     def cmd_whoami(bbs, from_pk, args):
         username = _sender_username(from_pk)
         if not username:
-            return "Error: sender identity invalid.\r\n"
-        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+            return _err("sender_invalid")
+        node_id = _config_node_id(bbs.config)
         return f"Your address: {username}@{node_id}\r\n"
 
     @bbs_command("MSG")
     def cmd_msg(bbs, from_pk, args):
         if not bbs.db:
-            return "Error: database unavailable.\r\n"
+            return _err("db_unavailable")
         username = _sender_username(from_pk)
         if not username:
-            return "Error: sender identity invalid.\r\n"
-        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+            return _err("sender_invalid")
+        node_id = _config_node_id(bbs.config)
         try:
             to_user, to_node, subject, body = _parse_msg_args(args, node_id)
         except ValueError as e:
-            return f"{e}\r\n"
+            return _with_crlf(str(e))
+        ref_msg_id, body = _strip_ref_prefix(body)
+        thread_id = _thread_id_from_reference(bbs.db, ref_msg_id)
+        if ref_msg_id and not thread_id:
+            ref_msg_id = ""
+        if ref_msg_id and not body:
+            quoted = bbs.db.get_message(ref_msg_id)
+            if quoted:
+                preview = "\n".join(f"> {line}" for line in (quoted.body or "").splitlines()[:4])
+                body = f"> {quoted.from_addr} wrote:\n{preview}".strip()
+        if len(body) > _MAX_BODY_LEN:
+            return _err("invalid_body_too_long")
 
         from_addr = f"{username}@{node_id}"
         to_addr = f"{to_user}@{to_node}"
@@ -232,8 +422,8 @@ def _setup_bbs_commands():
                 status=MessageStatus.LOCAL,
                 fwd_history=[],
                 signature=None,
-                thread_id="",
-                ref_msg_id="",
+                thread_id=thread_id,
+                ref_msg_id=ref_msg_id,
                 chunk_ids=[],
             )
             entry = InboxEntry(
@@ -245,38 +435,40 @@ def _setup_bbs_commands():
                 read_at=0,
             )
             if not bbs.db.save_message(msg):
-                return "Error: message persistence failed.\r\n"
+                return _err("msg_save_failed")
             if not bbs.db.save_inbox_entry(entry):
-                return "Error: inbox persistence failed.\r\n"
+                return _err("inbox_save_failed")
+            if ref_msg_id:
+                return f"Message sent to @{to_user}@{to_node} (thread {thread_id[:8]}).\r\n"
             return f"Message sent to @{to_user}@{to_node}.\r\n"
-        except Exception as e:
+        except Exception:
             log.exception("MC MSG error")
-            return "Error: internal failure while saving message.\r\n"
+            return _err("msg_save_internal")
 
     @bbs_command("DELETE")
     def cmd_delete(bbs, from_pk, args):
         if not bbs.db:
-            return "Error: database unavailable.\r\n"
+            return _err("db_unavailable")
         username = _sender_username(from_pk)
         if not username:
-            return "Error: sender identity invalid.\r\n"
+            return _err("sender_invalid")
         try:
             idx = int(args.strip())
         except Exception:
-            return "Usage: !DELETE <number>\r\n"
+            return _err("usage_delete")
         if idx <= 0:
-            return "Usage: !DELETE <number>\r\n"
-        node_id = getattr(bbs.config, "node_id", "YOUR-NODE-ID")
+            return _err("usage_delete")
+        node_id = _config_node_id(bbs.config)
         entries = bbs.db.get_inbox(username, include_read=True, node_id=node_id)[:50]
         if idx > len(entries):
-            return "Error: inbox item not found.\r\n"
+            return _err("inbox_item_missing")
         target = entries[idx - 1]
         msg_id = target.get("msg_id")
         if not msg_id:
-            return "Error: malformed inbox entry.\r\n"
+            return _err("inbox_item_malformed")
         if bbs.db.delete_message(msg_id):
             return f"Deleted message #{idx}.\r\n"
-        return "Error: could not delete message.\r\n"
+        return _err("delete_failed")
 
     # ── DiagBot commands (registered in BBS registry) ──────────────────────
     @bbs_command("PING")
@@ -324,7 +516,7 @@ def _diag_ping(bbs, from_pk, args):
     return _cmd_ping_direct(grid=_ping_grid(bbs.config))
 
 def _diag_echo(bbs, from_pk, args):
-    return args or "?"
+    return _cmd_echo_direct(args or "?")
 
 def _diag_selftest(bbs, from_pk, args):
     return _cmd_selftest_direct(bbs.db, bbs.routing, bbs.mc_bridge)
@@ -353,6 +545,35 @@ class MeshBBSServer:
         self.mc_bridge = None
         self.diagbot = None
         self._running = False
+        self._auto_finger_task: Optional[asyncio.Task] = None
+        self._started_at = int(time.time())
+
+    def _build_auto_finger_payload(self) -> str:
+        node_id = _config_node_id(self.config)
+        grid = _ping_grid(self.config) or "-"
+        location = str(getattr(self.config, "location", "") or "-")
+        peers = self.db.get_all_nodes() if self.db else []
+        online = sum(1 for p in peers if p.status.value == 1)
+        queue_depth = self.db.queue_depth() if self.db else 0
+        uptime = max(0, int(time.time()) - int(self._started_at))
+        return (
+            f"FINGER {node_id} grid={grid} loc={location} "
+            f"peers={online}/{len(peers)} queue={queue_depth} up={uptime}s"
+        )
+
+    async def _auto_finger_loop(self):
+        interval = max(60, int(getattr(self.config, "auto_finger_interval", 900) or 900))
+        channel = int(getattr(self.config, "auto_finger_channel", 1) or 1)
+        while self._running:
+            try:
+                if self.mc_bridge and self.mc_bridge.is_connected():
+                    self.mc_bridge.send_channel_message(channel, self._build_auto_finger_payload())
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("Auto-finger loop failed")
+                await asyncio.sleep(min(60, interval))
 
     def _handle_meshcore_channel(self, channel_idx: int, text: str, sender_ts: int, rssi: int, snr: int, from_pubkey: str = None, hops: int = 0):
         """Handle incoming channel message — PING/TEST on any channel, respond on same channel + DM."""
@@ -409,9 +630,9 @@ class MeshBBSServer:
     def _handle_meshcore_dm(self, from_pubkey: str, text: str) -> str:
         """Handle incoming DM from MeshCore — route to BBS command."""
         if not isinstance(text, str):
-            return "Error: invalid DM payload.\r\n"
+            return _err("dm_invalid_payload")
         if len(text) > _MAX_DM_TEXT_LEN:
-            return f"Error: DM too long (max {_MAX_DM_TEXT_LEN} chars).\r\n"
+            return _err("dm_too_long")
 
         if self.diagbot:
             resp = self.diagbot.handle_dm(from_pubkey, text)
@@ -425,17 +646,17 @@ class MeshBBSServer:
             if cmd in BBS_COMMANDS:
                 try:
                     return BBS_COMMANDS[cmd](self, from_pubkey, args)
-                except Exception as e:
+                except Exception:
                     log.exception("Command handler failed: %s", cmd)
-                    return "Error: internal command failure.\r\n"
+                    return _err("cmd_internal_failure")
             else:
                 return f"Unknown: {cmd}\r\nTry !HELP"
         else:
             username = _sender_username(from_pubkey) or "unknown"
-            node_id = getattr(self.config, "node_id", "YOUR-NODE-ID")
+            node_id = _config_node_id(self.config)
             return (
                 f"MeshBBS BBS | Du: {username}@{node_id}\r\n"
-                f"Befehle: !HELP !STAT !INBOX !MSG !DELETE !WHOAMI !NODES"
+                f"Befehle: !HELP !STAT !INFO !INBOX !THREAD !MSG !DELETE !WHOAMI !NODES"
             )
 
     async def start(self):
@@ -472,8 +693,16 @@ class MeshBBSServer:
         await self.sync.start()
         log.info("Sync engine started")
 
-        log.info("MeshCore DM BBS: message @YOUR-NODE-ID")
+        self._started_at = int(time.time())
+        log.info("MeshCore DM BBS: message @%s", _config_node_id(self.config))
         self._running = True
+        if bool(getattr(self.config, "auto_finger_enabled", True)):
+            self._auto_finger_task = asyncio.create_task(self._auto_finger_loop())
+            log.info(
+                "Auto-finger enabled: channel=%s interval=%ss",
+                getattr(self.config, "auto_finger_channel", 1),
+                getattr(self.config, "auto_finger_interval", 900),
+            )
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             asyncio.get_event_loop().add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
@@ -484,6 +713,12 @@ class MeshBBSServer:
     async def stop(self):
         log.info("Shutting down MeshBBS...")
         self._running = False
+        if self._auto_finger_task:
+            self._auto_finger_task.cancel()
+            try:
+                await self._auto_finger_task
+            except asyncio.CancelledError:
+                pass
         if self.sync:
             await self.sync.stop()
         if self.routing:

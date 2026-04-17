@@ -8,6 +8,7 @@ import time
 import uuid
 import logging
 import sqlite3
+import re
 from typing import Optional, Dict, List
 
 from .models import MessageType, MessageStatus, Priority, QueueStatus, QueueEntry
@@ -16,12 +17,13 @@ log = logging.getLogger("MeshBBS.diag")
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
-NODE_ID = "YOUR-NODE-ID"
+NODE_ID = os.environ.get("MESHMAIL_NODE_ID", "LOCALNODE").strip() or "LOCALNODE"
 BOT_VERSION = "v0.3"
 RATE_LIMIT = 10          # max commands per minute
 RATE_WINDOW = 60         # seconds
 MAX_DM_COMMAND_LEN = 1024
 MAX_ECHO_LEN = 256
+_VALID_NODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 SYSOP_KEY = os.environ.get("MESHMAIL_SYSOP_KEY", "").strip()
 _START_TIME = int(time.time())
 
@@ -155,8 +157,12 @@ def _grid_from_config(config, default_grid: str = "") -> str:
     if config is None:
         return default_grid
     try:
-        lat = float(getattr(config, "latitude", 51.898458))
-        lon = float(getattr(config, "longitude", 12.464044))
+        lat = getattr(config, "latitude", None)
+        lon = getattr(config, "longitude", None)
+        if lat is None or lon is None:
+            return default_grid
+        lat = float(lat)
+        lon = float(lon)
         return _maidenhead(lat, lon)
     except Exception:
         return default_grid
@@ -175,10 +181,18 @@ def _cmd_echo_direct(text: str) -> str:
 
 
 def _cmd_status_direct(from_pubkey: str, db) -> str:
+    return _cmd_status_with_meta(
+        from_pubkey=from_pubkey,
+        db=db,
+        node_id=NODE_ID,
+        version=BOT_VERSION,
+    )
+
+
+def _cmd_status_with_meta(from_pubkey: str, db, node_id: str, version: str) -> str:
     if not _is_sysop(from_pubkey):
         return "STATUS: SYSOP ONLY"
     uptime = int(time.time() - _START_TIME)
-    ts = int(time.time())
     msgs = _msg_count(db)
     qs = _queue_sizes(db)
     peers = _peer_count(db)
@@ -188,7 +202,7 @@ def _cmd_status_direct(from_pubkey: str, db) -> str:
     return (
         "STATUS %s %s UP:%ds | MSG:%d | "
         "Q(in:%d out:%d retry:%d) | SYNC:%s | PEERS:%d | [%s]"
-        % (NODE_ID, BOT_VERSION, uptime, msgs,
+        % (node_id, version, uptime, msgs,
            qs["inbound"], qs["outbound"], qs["retry"], sync_str, peers, mode)
     )
 
@@ -305,7 +319,7 @@ class DiagBot:
         self.mc_bridge = mc_bridge
         self.config = config
         self._start_time = _START_TIME
-        self._node_id = NODE_ID
+        self._node_id = str(getattr(config, "node_id", "") or NODE_ID)
         self._version = BOT_VERSION
         log.info("DiagBot initialized")
 
@@ -315,7 +329,7 @@ class DiagBot:
             return "RATE LIMIT: max 10 commands/minute"
         cmd = text.strip()
         if len(cmd) > MAX_DM_COMMAND_LEN:
-            return f"Error: command too long (max {MAX_DM_COMMAND_LEN} chars)"
+            return f"ERROR command too long (max {MAX_DM_COMMAND_LEN} chars)"
         if cmd.startswith("!"):
             cmd = cmd[1:]
         if not cmd:
@@ -325,7 +339,7 @@ class DiagBot:
         if upper == "PING":
             return _cmd_ping_direct(grid=_grid_from_config(self.config))
         if upper.startswith("ECHO "):
-            return cmd[5:]
+            return _cmd_echo_direct(cmd[5:])
         if upper == "SELFTEST":
             return _cmd_selftest_direct(self.db, self.routing, self.mc_bridge)
         if upper.startswith("LINKTEST "):
@@ -333,7 +347,7 @@ class DiagBot:
             target = parts[1] if len(parts) > 1 else ""
             return self._cmd_linktest(target)
         if upper == "STATUS":
-            return _cmd_status_direct(from_pubkey, self.db)
+            return _cmd_status_with_meta(from_pubkey, self.db, self._node_id, self._version)
         if upper == "QUEUES":
             return _cmd_queues_direct(from_pubkey, self.db)
         if upper == "PEERS":
@@ -345,8 +359,11 @@ class DiagBot:
         return None  # pass through to BBS
 
     def _cmd_linktest(self, target_node: str) -> str:
+        target_node = (target_node or "").strip()
         if not target_node:
             return "LINKTEST: Usage: LINKTEST <node_id>"
+        if not _VALID_NODE_RE.fullmatch(target_node):
+            return "LINKTEST: invalid node id"
         if not self.mc_bridge or not self.mc_bridge.is_connected():
             return "LINKTEST %s ERROR no_meshcore" % target_node
         start = time.time()
